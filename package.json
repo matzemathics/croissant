@@ -21,5 +21,9 @@
   "bugs": {
     "url": "https://github.com/matzemathics/croissant/issues"
   },
-  "homepage": "https://github.com/matzemathics/croissant#readme"
+  "homepage": "https://github.com/matzemathics/croissant#readme",
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^7.1.10"
+  }
 }

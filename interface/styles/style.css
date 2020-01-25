@@ -1,0 +1,62 @@
+body 
+{
+	font-family: Verdana, Geneva, sans-serif;
+	background-color: thistle;
+
+}
+
+.header 
+{
+	margin-left:1em;
+}
+/* Element | file:///K:/Final%20Shit/Musicy.html */
+
+.header > h1:nth-child(1) {
+  margin-bottom: 0px;
+}
+
+/* Element | file:///K:/Final%20Shit/Musicy.html */
+
+.header > p:nth-child(2) {
+  margin-bottom: 0px;
+  margin-top: 2px;
+}
+
+/* Element | file:///K:/Final%20Shit/Musicy.html */
+
+.header > p:nth-child(3) {
+  margin-top: 0px;
+}
+
+
+/* Element | file:///K:/Final%20Shit/Musicy.html */
+
+body > div.button object {
+  height: 75px;
+}
+body > div.button object:hover {
+	opacity: 0.5;
+}
+
+
+.cover {
+
+	/*border: 1px solid black;*/
+	height: 500px;
+	width:  500px;
+    margin-bottom: 30px;
+    margin-left: 16px;
+    
+}
+.cover > img {
+	height: 500px;
+	width:  500px;
+}
+
+body > div.button {
+	display: flex;
+	margin-left: 16px;
+	/* justify-items: stretch; */
+	justify-content: space-around;
+	width: 500px;
+}

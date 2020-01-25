@@ -1,0 +1,25 @@
+{
+  "name": "croissant",
+  "version": "1.0.0",
+  "description": "a cross platform electron-based audio player",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matzemathics/croissant.git"
+  },
+  "keywords": [
+    "audio",
+    "electron",
+    "neon",
+    "rust"
+  ],
+  "author": "matzemathics",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/matzemathics/croissant/issues"
+  },
+  "homepage": "https://github.com/matzemathics/croissant#readme"
+}

@@ -25,7 +25,7 @@ fn build(out_dir: &Path) {
         .args(&["./configure",
                 "--disable-shared", "--enable-static",
                 "--disable-doc",
-                "--disable-extra-programs",
+                "--disable-http",
                 "--with-pic",
                 "--prefix", &out_dir.to_str().unwrap().replace("\\", "/")]));
     success_or_panic(&mut Command::new("make"));
@@ -41,7 +41,7 @@ fn build(out_dir: &Path) {
     success_or_panic(Command::new("./configure")
         .args(&["--disable-shared", "--enable-static",
                 "--disable-doc",
-                "--disable-extra-programs",
+                "--disable-http",
                 "--with-pic",
                 "--prefix", out_dir.to_str().unwrap()]));
     success_or_panic(&mut Command::new("make"));
@@ -57,7 +57,7 @@ fn build(out_dir: &Path) {
     success_or_panic(Command::new("./configure")
         .args(&["--disable-shared", "--enable-static",
                 "--disable-doc",
-                "--disable-extra-programs",
+                "--disable-http",
                 "--with-pic",
                 "--prefix", out_dir.to_str().unwrap()]));
     success_or_panic(&mut Command::new("make"));

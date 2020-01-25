@@ -36,3 +36,4 @@ libopusfile/src/libopusurl_la-http.o
 libopusfile/src/libopusurl_la-internal.o
 libopusfile/src/opusfile.o
 libopusfile/src/stream.o
+libopusfile/autom4te.cache

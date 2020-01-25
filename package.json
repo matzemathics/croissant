@@ -4,7 +4,7 @@
   "description": "a cross platform electron-based audio player",
   "main": "main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "electron-build-env neon build -p ./audio_player --release"
   },
   "repository": {
     "type": "git",
@@ -24,6 +24,8 @@
   "homepage": "https://github.com/matzemathics/croissant#readme",
   "dependencies": {},
   "devDependencies": {
-    "electron": "^7.1.10"
+    "electron": "^7.1.10",
+    "electron-build-env": "^0.2.0",
+    "neon-cli": "^0.3.3"
   }
 }

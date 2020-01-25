@@ -1,0 +1,14 @@
+# opusurl installed pkg-config file
+
+prefix=/home/matze/Dokumente/croissant/cpal-test/opusfile-sys/target/x86_64-pc-windows-gnu/debug/build/opusfile-sys-8459d80821a2fb08/out
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: opusurl
+Description: High-level Opus decoding library, URL support
+Version: 0.11
+Requires: opusfile
+Requires.private: openssl
+Conflicts:
+Libs: -L${libdir} -lopusurl

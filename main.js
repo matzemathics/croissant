@@ -17,7 +17,7 @@ function createWindow () {
   })
 
   // and load the index.html of the app.
-  mainWindow.loadFile('Musicy.html')
+  mainWindow.loadFile('interface/Musicy.html')
 
   // Open the DevTools.
   // mainWindow.webContents.openDevTools()

@@ -1,3 +1,4 @@
-var addon = require('../native');
+const addon = require('../native');
 
-console.log(addon.hello());
+exports.play = addon.play;
+exports.init = addon.init;

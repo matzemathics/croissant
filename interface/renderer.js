@@ -6,12 +6,12 @@
 // process.
 
 window.addEventListener('load', () => {
-    window.audio.init(() => { console.log('callback') });
-    window.audio.play();
+    window.audio.init(() => { });
     console.log(document.getElementById('play'))
     document.getElementById('play').contentDocument.onclick = () => {
         window.audio.play();
     }
     console.log(document.getElementById("cover-image").src)
+    window.audio.play();
 })
 

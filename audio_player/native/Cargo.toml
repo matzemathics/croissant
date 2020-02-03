@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["matze"]
 license = "MIT"
 build = "build.rs"
+edition = "2018"
 exclude = ["artifacts.json", "index.node"]
 
 [lib]
@@ -27,3 +28,4 @@ mime-detective = "0.2.3"
 opusfile = { path = "opusfile" }
 claxon = "0.4.2"
 lazy_static = "1.4.0"
+futures = "0.3.1"

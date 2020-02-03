@@ -85,6 +85,8 @@ impl Opusfile {
     }
 }
 
+unsafe impl Send for Opusfile {}
+
 impl Drop for Opusfile {
     fn drop(&mut self) {
         unsafe { opusfile_sys::op_free(self.0); }

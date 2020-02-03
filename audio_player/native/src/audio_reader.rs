@@ -69,18 +69,27 @@ pub trait AudioProducer : Sized {
     fn open(file_name: &str) -> Option<Self>;
     fn native_samplerate (&self) -> u32;
     fn read <T: ReaderTarget<f32>> (&mut self, target: &mut Resampler<T>);
-    fn legnth (&self) -> u128;
-    
-    fn read_to_target <T: ReaderTarget<f32>> (&mut self, target: &mut T, sample_rate: u32) {
-        let mut resampler = Resampler {
-            orig_rate: self.native_samplerate(),
-            dest_rate: sample_rate,
-            target: target,
-            converter: Samplerate::new(ConverterType::SincBestQuality, self.native_samplerate(), sample_rate, 2).expect("couldnt open converter")
-        };
-        self.read(&mut resampler);
-    }
-    
+    fn legnth (&self) -> u128;    
+}
+
+pub async fn read_to_target <T: ReaderTarget<f32>, P: AudioProducer> (
+    prod: &mut P, 
+    target: &mut T, 
+    sample_rate: u32) 
+{
+    let mut resampler = Resampler {
+        orig_rate: prod.native_samplerate(),
+        dest_rate: sample_rate,
+        target: target,
+        converter: {
+            Samplerate::new(
+                ConverterType::SincBestQuality, 
+                prod.native_samplerate(), 
+                sample_rate, 2)
+            .expect("couldnt open converter")
+        } 
+    };
+    prod.read(&mut resampler);
 }
 
 pub enum AudioFile {

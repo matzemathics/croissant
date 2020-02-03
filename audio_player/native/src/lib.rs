@@ -6,6 +6,7 @@ use neon::prelude::*;
 register_module!(mut cx, {
     cx.export_function("play", play)
       .and(cx.export_function("init", init))
+      .and(cx.export_function("add_to_queue", add_pl))
 });
 
 extern crate cpal;
@@ -16,16 +17,21 @@ extern crate lazy_static;
 
 mod audio_reader;
 
-use audio_reader::{ReaderTarget, AudioFile, AudioProducer};
+use audio_reader::{ReaderTarget, AudioFile, AudioProducer, read_to_target};
 
 use cpal::traits::{HostTrait, EventLoopTrait};
 use cpal::{StreamData, UnknownTypeOutputBuffer, Format};
 
 use std::thread;
+use std::thread::sleep;
+use std::time::Duration;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::boxed::Box;
 use std::marker::PhantomData;
+use std::collections::VecDeque;
+
+use futures::executor::block_on;
 
 use ringbuf::{ RingBuffer, Producer };
 
@@ -34,12 +40,13 @@ use lazy_static::lazy_static;
 //use id3::{Tag};
 
 struct PlayerState<'a> {
-    player: Option<CpalPlayer<'a>>
+    player: Option<CpalPlayer<'a>>,
+    playlist: VecDeque<String>
 }
 
 impl<'a> PlayerState<'a> {
     fn new() -> PlayerState<'a> {
-        PlayerState { player: None }
+        PlayerState { player: None, playlist: VecDeque::new() }
     }
 
     fn initialized(&self) -> bool {
@@ -48,6 +55,18 @@ impl<'a> PlayerState<'a> {
 
     fn init(&mut self, player: CpalPlayer<'a>) {
         self.player = Some(player);
+    }
+
+    fn next_song(&mut self) -> Option<String> {
+        self.playlist.pop_front()
+    }
+
+    fn add_to_queue(&mut self, title: String) {
+        self.playlist.push_back(title);
+    }
+
+    fn play_next(&mut self, title: String) {
+        self.playlist.push_front(title);
     }
 }
 
@@ -186,20 +205,32 @@ fn play(mut cx: FunctionContext) -> JsResult<JsNull> {
     }
 }
 
+fn add_pl (mut cx: FunctionContext) -> JsResult<JsNull> {
+    if let Ok(arg0) = cx.argument::<JsString>(0) {
+        STATE.lock().unwrap().add_to_queue(arg0.value());
+    }
+    Ok(cx.null())
+}
+
 fn spawn_file_reader (mut prod: Producer<f32>, sample_rate: u32) {
 
     thread::spawn(move || {
         let curr_dir = std::env::current_dir().unwrap();
         
-        let files = vec![
-            curr_dir.join("03_-_Rhizomes.opus")
-        ];
+        loop {
+            let mut guard = STATE.lock().unwrap();
+            if let Some(file) = guard.next_song() {
+                if let Some(mut f) = AudioFile::open(file.as_str()) {
+                    std::mem::drop(guard);
+                    let future = read_to_target(&mut f, &mut prod, sample_rate);
+                    block_on(future);
 
-        for file in files {
-            if let Some(mut f) = AudioFile::open(file.to_str().unwrap()) {
-                f.read_to_target(&mut prod, sample_rate)
-            } else {
-                println!("an error occurred while reading from {}", file.to_str().unwrap());
+                } else {
+                    println!("an error occurred while reading from {}", file.as_str());
+                }
+            } else { 
+                std::mem::drop(guard);
+                sleep(Duration::from_millis(100));
             }
         }
     });

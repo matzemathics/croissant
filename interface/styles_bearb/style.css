@@ -31,10 +31,10 @@ body
 
 /* Element | file:///K:/Final%20Shit/Musicy.html */
 
-body > div.button img {
+body > div.button object {
   height: 75px;
 }
-body > div.button img:hover {
+body > div.button object:hover {
 	opacity: 0.5;
 }
 
@@ -59,4 +59,20 @@ body > div.button {
 	/* justify-items: stretch; */
 	justify-content: space-around;
 	width: 500px;
+}
+
+.description {
+	/*height: 110px;*/
+	margin-top: 12px;
+	width: 600px;
+	background-color: #1efa68;
+    border-left-style: solid;
+    border-top-style: solid;
+	border-top-width: 1px;
+	border-top-color: #1efa68;
+	border-left-color: #00802b;
+	border-left-width: 10px;
+    padding-bottom: 1px;
+    padding-left: 7px;
+    border-radius: 8px;
 }

@@ -7,11 +7,23 @@
 
 window.addEventListener('load', () => {
     window.audio.init(() => { });
+    window.audio.add_to_queue('/home/matze/Dokumente/croissant/croissant/03_-_Rhizomes.opus');
     console.log(document.getElementById('play'))
-    document.getElementById('play').contentDocument.onclick = () => {
-        window.audio.play();
-    }
+
+    document.getElementById('play').onclick = play_action;
+
     console.log(document.getElementById("cover-image").src)
     window.audio.play();
 })
 
+function play_action () {
+    window.audio.play();
+    document.getElementById('play').src = "icons/pause.svg";
+    document.getElementById('play').onclick = pause_action;
+}
+
+function pause_action () {
+    window.audio.play();
+    document.getElementById('play').src = "icons/play.svg";
+    document.getElementById('play').onclick = play_action;
+}

@@ -7,6 +7,8 @@ register_module!(mut cx, {
     cx.export_function("play", play)
       .and(cx.export_function("init", init))
       .and(cx.export_function("add_to_queue", add_pl))
+      .and(cx.export_function("import_m3u", import_m3u))
+      .and(cx.export_function("skip", skip))
 });
 
 extern crate cpal;
@@ -14,6 +16,8 @@ extern crate samplerate;
 extern crate ringbuf;
 extern crate mime_detective;
 extern crate lazy_static;
+extern crate m3u;
+extern crate futures_util;
 
 mod audio_reader;
 
@@ -22,31 +26,40 @@ use audio_reader::{ReaderTarget, AudioFile, AudioProducer, read_to_target};
 use cpal::traits::{HostTrait, EventLoopTrait};
 use cpal::{StreamData, UnknownTypeOutputBuffer, Format};
 
-use std::thread;
-use std::thread::sleep;
-use std::time::Duration;
-use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
-use std::boxed::Box;
-use std::marker::PhantomData;
-use std::collections::VecDeque;
+use std::{
+    thread,
+    thread::sleep,
+    time::Duration,
+    fmt::Debug,
+    sync::{Arc, Mutex},
+    boxed::Box,
+    marker::PhantomData,
+    collections::VecDeque,
+    io::{BufReader},
+    fs::File    
+};
 
+use futures::prelude::*;
+use futures::future::{Abortable, AbortHandle, Aborted};
 use futures::executor::block_on;
 
 use ringbuf::{ RingBuffer, Producer };
 
 use lazy_static::lazy_static;
 
+use m3u::{Entry, EntryReader, Url};
+
 //use id3::{Tag};
 
 struct PlayerState<'a> {
     player: Option<CpalPlayer<'a>>,
-    playlist: VecDeque<String>
+    playlist: VecDeque<String>,
+    skip_flag: bool,
 }
 
 impl<'a> PlayerState<'a> {
     fn new() -> PlayerState<'a> {
-        PlayerState { player: None, playlist: VecDeque::new() }
+        PlayerState { player: None, playlist: VecDeque::new(), skip_flag: false }
     }
 
     fn initialized(&self) -> bool {
@@ -55,6 +68,10 @@ impl<'a> PlayerState<'a> {
 
     fn init(&mut self, player: CpalPlayer<'a>) {
         self.player = Some(player);
+    }
+
+    fn skip(&mut self) {
+        self.skip_flag = true;
     }
 
     fn next_song(&mut self) -> Option<String> {
@@ -205,10 +222,31 @@ fn play(mut cx: FunctionContext) -> JsResult<JsNull> {
     }
 }
 
+fn import_m3u (mut cx: FunctionContext) -> JsResult<JsNull> {
+    if let Ok(arg0) = cx.argument::<JsString>(0) {
+        let path = arg0.value();
+        let mut reader = EntryReader::open(path.clone()).unwrap();
+        let base = Url::from_file_path(path.as_str()).unwrap();
+
+        for entry in reader.entries() {
+            if let Ok(Entry::Path(p)) = entry {
+                let p = base.join((*p).to_str().unwrap()).unwrap().to_file_path().unwrap();
+                STATE.lock().unwrap().add_to_queue(p.to_str().unwrap().to_string());
+            }
+        }
+    }
+    Ok(cx.null())
+}
+
 fn add_pl (mut cx: FunctionContext) -> JsResult<JsNull> {
     if let Ok(arg0) = cx.argument::<JsString>(0) {
         STATE.lock().unwrap().add_to_queue(arg0.value());
     }
+    Ok(cx.null())
+}
+
+fn skip (mut cx: FunctionContext) -> JsResult<JsNull> {
+    STATE.lock().unwrap().skip();
     Ok(cx.null())
 }
 
@@ -221,9 +259,11 @@ fn spawn_file_reader (mut prod: Producer<f32>, sample_rate: u32) {
             let mut guard = STATE.lock().unwrap();
             if let Some(file) = guard.next_song() {
                 if let Some(mut f) = AudioFile::open(file.as_str()) {
-                    std::mem::drop(guard);
                     let future = read_to_target(&mut f, &mut prod, sample_rate);
-                    block_on(future);
+                    
+                    while std::future::poll_with_tls_context(future) == std::task::Poll::Pending {
+                        thread::sleep(Duration::from_millis(10));
+                    }
 
                 } else {
                     println!("an error occurred while reading from {}", file.as_str());

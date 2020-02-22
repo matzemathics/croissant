@@ -7,7 +7,6 @@
 
 window.addEventListener('load', () => {
     window.audio.init(() => { });
-    window.audio.add_to_queue('/home/matze/Dokumente/croissant/croissant/03_-_Rhizomes.opus');
     console.log(document.getElementById('play'))
 
     document.getElementById('play').onclick = play_action;

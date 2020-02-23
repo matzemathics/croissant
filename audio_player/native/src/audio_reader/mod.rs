@@ -8,74 +8,66 @@ use mime_detective::MimeDetective;
 
 use samplerate::{ConverterType, Samplerate, convert};
 
-use std::thread::sleep;
-use std::iter::{Iterator, FromIterator};
-use std::result::Result;
-use std::time::Duration;
-use std::fs::File;
+use std::{
+    thread::sleep,
+    iter::{Iterator, FromIterator},
+    result::Result,
+    time::Duration,
+    fs::File,
+    pin::Pin,
+    task::{Context, Poll},
+    future::Future,
+    sync::{Arc, Mutex}
+};
 
-pub trait ReaderTarget<T> {
-    fn read_iter <I: Iterator<Item = T>> (&mut self, iter: &mut I) -> usize;
-    fn read_value (&mut self, val: T) -> Result<(), T>;
-    fn is_full(&self) -> bool;
-    fn ms_timing(&self) -> u64;
-    fn single_ms_timing(&self) -> u64;
+use futures::{
+    sink::{Sink, SinkExt, Send},
+    task::{Waker}
+};
 
-    fn read_iter_block <I: Iterator<Item = T>> (&mut self, iter: &mut I) {
-        loop {
-            if ! self.is_full() {
-                let n = self.read_iter(iter);
-                if n == 0 { break; }
-            }
-            else {
-                sleep(Duration::from_millis(self.ms_timing()));
-            }
-        }
-    }
-    fn read_value_block (&mut self, val: T) {
-        let mut v = val;
-        loop {
-            if self.is_full() {
-                sleep(Duration::from_millis(self.single_ms_timing()));
-            } else {
-                match self.read_value(v) {
-                    Err(x) => { v = x; },
-                    Ok(_) => { break; }
-                }
-            }
-        }
-    }
-}
+use async_trait::async_trait;
 
-pub struct Resampler<'a, T> {
+pub mod buffered_reader;
+
+use buffered_reader::{BufferedReader, ReaderTarget};
+
+pub struct Resampler<T> {
     orig_rate: u32,
     dest_rate: u32,
-    target: &'a mut T,
+    target: BufferedReader<f32, T>,
     converter: samplerate::Samplerate
 }
 
-impl<T: ReaderTarget<f32>> Resampler<'_, T> {
-    fn resample (&mut self, input: &[f32]) {
-        if self.dest_rate == self.orig_rate {
-            self.target.read_iter_block(&mut input.iter().map(|x| *x));
-        } else {
-            let converted = self.converter.process(input).expect("couldn't resample");
-            self.target.read_iter_block(&mut converted.iter().map(|x| *x));
-        }
+unsafe impl<T> std::marker::Send for Resampler <T> {}
+
+impl<T: ReaderTarget<f32>> Resampler<T>
+{
+    fn resample (&mut self, input: &[f32]) -> impl Future + '_
+    {
+        let converted = {
+            if self.dest_rate == self.orig_rate {
+                Vec::from(input)
+            } else {
+                self.converter.process(input).expect("couldn't resample")
+            }
+        };
+
+        self.target.send(converted)
     }
 }
 
+#[async_trait]
 pub trait AudioProducer : Sized {
     fn open(file_name: &str) -> Option<Self>;
     fn native_samplerate (&self) -> u32;
-    fn read <T: ReaderTarget<f32>> (&mut self, target: &mut Resampler<T>);
+    async fn read <T: ReaderTarget<f32>> (&mut self, mut target: Resampler<T>);
     fn legnth (&self) -> u128;    
 }
 
-pub async fn read_to_target <T: ReaderTarget<f32>, P: AudioProducer> (
-    prod: &mut P, 
-    target: &mut T, 
-    sample_rate: u32) 
+pub fn resample_read <'a, T: ReaderTarget<f32> + 'a, P: AudioProducer> (
+    prod: &'a mut P, 
+    target: BufferedReader<f32, T>, 
+    sample_rate: u32) -> impl Future + 'a
 {
     let mut resampler = Resampler {
         orig_rate: prod.native_samplerate(),
@@ -89,7 +81,7 @@ pub async fn read_to_target <T: ReaderTarget<f32>, P: AudioProducer> (
             .expect("couldnt open converter")
         } 
     };
-    prod.read(&mut resampler);
+    prod.read(resampler)
 }
 
 pub enum AudioFile {
@@ -99,6 +91,7 @@ pub enum AudioFile {
     FlacFile(FlacReader)
 }
 
+#[async_trait]
 impl AudioProducer for AudioFile {
     fn open(file_name: &str) -> Option<Self> {
         let struppi = MimeDetective::new().ok()?;
@@ -137,12 +130,12 @@ impl AudioProducer for AudioFile {
             AudioFile::FlacFile(f) => f.native_samplerate()
         }
     }
-    fn read <T: ReaderTarget<f32>> (&mut self, target: &mut Resampler<T>) {
+    async fn read <T: ReaderTarget<f32>> (&mut self, mut target: Resampler<T>) {
         match self {
-            AudioFile::Mp3File(f) => f.read(target),
-            AudioFile::WavFile(f) => f.read(target),
-            AudioFile::OpusFile(f) => f.read(target),
-            AudioFile::FlacFile(f) => f.read(target)
+            AudioFile::Mp3File(f) => f.read(target).await,
+            AudioFile::WavFile(f) => f.read(target).await,
+            AudioFile::OpusFile(f) => f.read(target).await,
+            AudioFile::FlacFile(f) => f.read(target).await
         }
     }
 
@@ -158,6 +151,7 @@ impl AudioProducer for AudioFile {
 
 pub type WavReader = hound::WavReader<std::io::BufReader<std::fs::File>>;
 
+#[async_trait]
 impl AudioProducer for WavReader {
     fn open(file_name: &str) -> Option<Self> {
         hound::WavReader::open(file_name).ok()
@@ -171,7 +165,7 @@ impl AudioProducer for WavReader {
         (self.len() / 2).into()
     }
 
-    fn read <T: ReaderTarget<f32>> (&mut self, target: &mut Resampler<T>) {
+    async fn read <T: ReaderTarget<f32>> (&mut self, mut target: Resampler<T>) {
         let chunk_len = self.native_samplerate();
 
         //TODO: check sample format
@@ -181,7 +175,7 @@ impl AudioProducer for WavReader {
         loop {
             let chunk = samples.by_ref().take(chunk_len as usize);
             if chunk.len() == 0 { break; }
-            target.resample(& chunk.collect::<Vec<_>>());
+            target.resample(& chunk.collect::<Vec<_>>()).await;
         }
     }
 }
@@ -191,6 +185,7 @@ pub struct Mp3Reader {
     sample_rate: u32
 }
 
+#[async_trait]
 impl AudioProducer for Mp3Reader {
     fn open(file_name: &str) -> Option<Self> {
         let f = File::open(file_name).ok()?;
@@ -204,7 +199,7 @@ impl AudioProducer for Mp3Reader {
 
     fn legnth(&self) -> u128 { unimplemented!() }
 
-    fn read <T: ReaderTarget<f32>> (&mut self, target: &mut Resampler<T>) {
+    async fn read <T: ReaderTarget<f32>> (&mut self, mut target: Resampler<T>) {
         let mut frame = self.decoder.next_frame();
 
         while let Ok(f) = frame {
@@ -220,11 +215,11 @@ impl AudioProducer for Mp3Reader {
                 if l * l > 0.01 || r * r > 0.01 { break; }
             }
             
-            target.resample(& curr_samples.collect::<Vec<_>>());
+            target.resample(& curr_samples.collect::<Vec<_>>()).await;
 
             if let Ok(n) = frame {
                 let curr_samples = n.data.iter().map(|x| *x as f32 / 32768.0);
-                target.resample(& curr_samples.collect::<Vec<_>>());
+                target.resample(& curr_samples.collect::<Vec<_>>()).await;
             }
 
             break;
@@ -232,13 +227,14 @@ impl AudioProducer for Mp3Reader {
 
         while let Ok(n) = self.decoder.next_frame() {
             let curr_samples = n.data.iter().map(|x| *x as f32 / 32768.0);
-            target.resample(& curr_samples.collect::<Vec<_>>());
+            target.resample(& curr_samples.collect::<Vec<_>>()).await;
         }
     }
 }
 
 pub type OpusReader = opusfile::Opusfile;
 
+#[async_trait]
 impl AudioProducer for OpusReader {
     fn open(file_name: &str) -> Option<Self> {
         opusfile::Opusfile::open(file_name).ok()
@@ -248,7 +244,7 @@ impl AudioProducer for OpusReader {
 
     fn legnth(&self) -> u128 { unimplemented!() }
 
-    fn read <T: ReaderTarget<f32>> (&mut self, target: &mut Resampler<T>) {
+    async fn read <T: ReaderTarget<f32>> (&mut self, mut target: Resampler<T>) {
         loop {
             let mut buf = [0.0; 2000];
             match self.read_stereo(&mut buf) {
@@ -259,7 +255,7 @@ impl AudioProducer for OpusReader {
                 Ok(n) => {
                     if n == 0 { break; }
                     let samples = buf.split_at(n*2).0;
-                    target.resample(&samples)
+                    target.resample(&samples).await;
                 }
             }
         }
@@ -268,6 +264,7 @@ impl AudioProducer for OpusReader {
 
 type FlacReader = claxon::FlacReader<std::fs::File>;
 
+#[async_trait]
 impl AudioProducer for FlacReader {
     fn open(file_name: &str) -> Option<Self> {
         claxon::FlacReader::open(file_name).ok()
@@ -279,13 +276,13 @@ impl AudioProducer for FlacReader {
 
     fn legnth(&self) -> u128 { unimplemented!() }
 
-    fn read <T: ReaderTarget<f32>> (&mut self, target: &mut Resampler<T>) {
+    async fn read <T: ReaderTarget<f32>> (&mut self, mut target: Resampler<T>) {
         let mut blocks = self.blocks();
         let mut buffer = Vec::new();
 
         while let Ok(Some(chunk)) = blocks.read_next_or_eof(buffer) {
             buffer = chunk.into_buffer();
-            target.resample(& buffer.iter().map(|x| *x as f32 / 32768.0).collect::<Vec<_>>());
+            target.resample(& buffer.iter().map(|x| *x as f32 / 32768.0).collect::<Vec<_>>()).await;
         }
     }
 }

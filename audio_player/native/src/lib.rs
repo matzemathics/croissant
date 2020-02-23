@@ -5,6 +5,7 @@ use neon::prelude::*;
 
 register_module!(mut cx, {
     cx.export_function("play", play)
+      .and(cx.export_function("pause", pause))
       .and(cx.export_function("init", init))
       .and(cx.export_function("add_to_queue", add_pl))
       .and(cx.export_function("import_m3u", import_m3u))
@@ -21,7 +22,8 @@ extern crate futures_util;
 
 mod audio_reader;
 
-use audio_reader::{ReaderTarget, AudioFile, AudioProducer, read_to_target};
+use audio_reader::buffered_reader::{BufferedReader, ReaderTarget};
+use audio_reader::{AudioFile, AudioProducer, resample_read};
 
 use cpal::traits::{HostTrait, EventLoopTrait};
 use cpal::{StreamData, UnknownTypeOutputBuffer, Format};
@@ -39,9 +41,12 @@ use std::{
     fs::File    
 };
 
-use futures::prelude::*;
-use futures::future::{Abortable, AbortHandle, Aborted};
-use futures::executor::block_on;
+use futures::{
+    prelude::*,
+    future::{Abortable, AbortHandle},
+    executor::block_on,
+    task::AtomicWaker
+};
 
 use ringbuf::{ RingBuffer, Producer };
 
@@ -54,12 +59,12 @@ use m3u::{Entry, EntryReader, Url};
 struct PlayerState<'a> {
     player: Option<CpalPlayer<'a>>,
     playlist: VecDeque<String>,
-    skip_flag: bool,
+    abort_handle: Option<AbortHandle>,
 }
 
 impl<'a> PlayerState<'a> {
     fn new() -> PlayerState<'a> {
-        PlayerState { player: None, playlist: VecDeque::new(), skip_flag: false }
+        PlayerState { player: None, playlist: VecDeque::new(), abort_handle: None }
     }
 
     fn initialized(&self) -> bool {
@@ -71,7 +76,9 @@ impl<'a> PlayerState<'a> {
     }
 
     fn skip(&mut self) {
-        self.skip_flag = true;
+        if let Some(handle) = &self.abort_handle {
+            handle.abort();
+        }
     }
 
     fn next_song(&mut self) -> Option<String> {
@@ -101,6 +108,7 @@ impl CpalPlayer<'_> {
     fn new<'a>(
         sample_rate: u32, 
         mut cons: ringbuf::Consumer<f32>,
+        shared_waker: Arc<AtomicWaker>
     ) -> Option<CpalPlayer<'a>>
     {
         let host = cpal::default_host();
@@ -133,7 +141,7 @@ impl CpalPlayer<'_> {
                         for elem in buffer.iter_mut() {
                             *elem = cons.pop().unwrap_or(0.0);
                         }
-
+                        shared_waker.wake();
                     },
                     _ => (),
                 }
@@ -149,11 +157,13 @@ impl CpalPlayer<'_> {
         })
     }
 
-    fn play(&self) -> Result<(), String> {
+    fn play(&mut self) -> Result<(), String> {
+        self.playing = true;
         self.event_loop.play_stream(self.stream_id.clone()).map_err(stringify)
     }
 
-    fn pause(&self) -> Result<(), String> {
+    fn pause(&mut self) -> Result<(), String> {
+        self.playing = false;
         self.event_loop.pause_stream(self.stream_id.clone()).map_err(stringify)
     }
 }
@@ -164,7 +174,7 @@ lazy_static! {
     }; 
 }
 
-impl<T> ReaderTarget<T> for ringbuf::Producer<T> {
+impl<T: Send> ReaderTarget<T> for ringbuf::Producer<T> {
     fn read_iter <I: Iterator<Item=T>> (&mut self, iter: &mut I) -> usize {
         self.push_iter(iter)
     }
@@ -176,14 +186,6 @@ impl<T> ReaderTarget<T> for ringbuf::Producer<T> {
     fn is_full (&self) -> bool {
         self.is_full()
     }
-
-    fn ms_timing (&self) -> u64 {
-        let samples_per_second = 44100 * 2;
-        let buffer_size = self.capacity() as u64;
-        buffer_size * 1000 / (samples_per_second * 10)
-    }
-
-    fn single_ms_timing (&self) -> u64 { 1 }
 }
 
 fn init(mut cx: FunctionContext) -> JsResult<JsNull> {
@@ -193,17 +195,17 @@ fn init(mut cx: FunctionContext) -> JsResult<JsNull> {
     let auddiobuf = RingBuffer::<f32>::new(buffer_size);
     let (mut prod, mut cons) = auddiobuf.split();
 
-    spawn_file_reader(prod, sample_rate);
+    let shared_waker = Arc::new(AtomicWaker::new());
 
-    let res = cx.null();
+    spawn_file_reader(prod, sample_rate, shared_waker.clone());
 
-    let player = CpalPlayer::new(sample_rate, cons).expect("cannot open player");
+    let mut player = CpalPlayer::new(sample_rate, cons, shared_waker).expect("cannot open player");
     player.pause();
 
     let mut state = STATE.lock().unwrap();
     state.init(player);
 
-    Ok(res)
+    Ok(cx.null())
 }
 
 fn play(mut cx: FunctionContext) -> JsResult<JsNull> {
@@ -211,12 +213,18 @@ fn play(mut cx: FunctionContext) -> JsResult<JsNull> {
     match &mut state.player {
         None => init(cx),
         Some(player) => {
-            if player.playing {
-                player.pause();
-            } else {
-                player.play();
-            }
-            player.playing = ! player.playing;
+            player.play();
+            Ok(cx.null())
+        }
+    }
+}
+
+fn pause(mut cx: FunctionContext) -> JsResult<JsNull> {
+    let mut state = STATE.lock().unwrap();
+    match &mut state.player {
+        None => init(cx),
+        Some(player) => {
+            player.pause();
             Ok(cx.null())
         }
     }
@@ -250,20 +258,25 @@ fn skip (mut cx: FunctionContext) -> JsResult<JsNull> {
     Ok(cx.null())
 }
 
-fn spawn_file_reader (mut prod: Producer<f32>, sample_rate: u32) {
+fn spawn_file_reader (mut prod: Producer<f32>, sample_rate: u32, shared_waker: Arc<AtomicWaker>) {
 
     thread::spawn(move || {
         let curr_dir = std::env::current_dir().unwrap();
-        
+        let prod = Arc::new(Mutex::new(prod));
         loop {
             let mut guard = STATE.lock().unwrap();
             if let Some(file) = guard.next_song() {
                 if let Some(mut f) = AudioFile::open(file.as_str()) {
-                    let future = read_to_target(&mut f, &mut prod, sample_rate);
-                    
-                    while std::future::poll_with_tls_context(future) == std::task::Poll::Pending {
-                        thread::sleep(Duration::from_millis(10));
-                    }
+                    let reader = BufferedReader::new(prod.clone(), shared_waker.clone());
+                    let future = resample_read(&mut f, reader, sample_rate);
+
+                    let (abort_handle, abort_reg) = AbortHandle::new_pair();
+                    let future = Abortable::new(future, abort_reg);
+                    guard.abort_handle = Some(abort_handle);
+
+                    drop(guard);
+                    println!("playing {}", file);
+                    block_on(future);
 
                 } else {
                     println!("an error occurred while reading from {}", file.as_str());

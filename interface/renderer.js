@@ -10,9 +10,10 @@ window.addEventListener('load', () => {
     console.log(document.getElementById('play'))
 
     document.getElementById('play').onclick = play_action;
+    document.getElementById('next').onclick = next_action;
 
     console.log(document.getElementById("cover-image").src)
-    window.audio.play();
+    window.audio.pause();
 })
 
 function play_action () {
@@ -22,7 +23,11 @@ function play_action () {
 }
 
 function pause_action () {
-    window.audio.play();
+    window.audio.pause();
     document.getElementById('play').src = "icons/play.svg";
     document.getElementById('play').onclick = play_action;
+}
+
+function next_action () {
+    window.audio.skip();
 }

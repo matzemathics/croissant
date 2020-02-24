@@ -98,7 +98,7 @@ impl AudioProducer for AudioFile {
         let mime_type = struppi.detect_filepath(file_name).ok()?;
             
         if mime_type.type_() != mime::AUDIO {
-            println!("not an audio file: {}", file_name);
+            println!("not an audio file: {} ({})", file_name, mime_type);
             return None;
         }
 

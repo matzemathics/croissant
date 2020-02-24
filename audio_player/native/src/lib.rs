@@ -9,7 +9,9 @@ register_module!(mut cx, {
       .and(cx.export_function("init", init))
       .and(cx.export_function("add_to_queue", add_pl))
       .and(cx.export_function("import_m3u", import_m3u))
-      .and(cx.export_function("skip", skip))
+      .and(cx.export_function("skip", abort_curr))
+      .and(cx.export_function("curr_playing", curr_playing))
+      .and(cx.export_function("prev", prev))
 });
 
 extern crate cpal;
@@ -58,13 +60,19 @@ use m3u::{Entry, EntryReader, Url};
 
 struct PlayerState<'a> {
     player: Option<CpalPlayer<'a>>,
-    playlist: VecDeque<String>,
-    abort_handle: Option<AbortHandle>,
+    play_queue: VecDeque<String>,
+    played_list: Vec<String>,
+    abort_handle: Option<AbortHandle>
 }
 
 impl<'a> PlayerState<'a> {
     fn new() -> PlayerState<'a> {
-        PlayerState { player: None, playlist: VecDeque::new(), abort_handle: None }
+        PlayerState { 
+            player: None, 
+            played_list: Vec::new(), 
+            play_queue: VecDeque::new(), 
+            abort_handle: None
+        }
     }
 
     fn initialized(&self) -> bool {
@@ -75,22 +83,43 @@ impl<'a> PlayerState<'a> {
         self.player = Some(player);
     }
 
-    fn skip(&mut self) {
+    fn abort_curr(&mut self) {
         if let Some(handle) = &self.abort_handle {
             handle.abort();
         }
     }
 
-    fn next_song(&mut self) -> Option<String> {
-        self.playlist.pop_front()
+    fn advance(&mut self) -> Option<String> {
+        let res = self.play_queue.pop_front();
+        if let Some(p) = res.clone() { self.played_list.push(p); }
+        res
+    }
+
+    fn go_back(&mut self) {
+        let curr = self.played_list.pop();
+        let res = self.played_list.pop();
+        if let Some(p) = res.clone() { 
+            self.play_queue.push_front(curr.unwrap());
+            self.play_queue.push_front(p); 
+        } else if let Some(p) = curr {
+            self.play_queue.push_front(p);
+        }
+    }
+
+    fn curr_playing(&self) -> Option<String> {
+        self.played_list.first().map(|x| (*x).clone())
     }
 
     fn add_to_queue(&mut self, title: String) {
-        self.playlist.push_back(title);
+        self.play_queue.push_back(title);
     }
 
     fn play_next(&mut self, title: String) {
-        self.playlist.push_front(title);
+        self.play_queue.push_front(title);
+    }
+
+    fn rm_curr (&mut self) {
+        self.played_list.pop();
     }
 }
 
@@ -205,6 +234,10 @@ fn init(mut cx: FunctionContext) -> JsResult<JsNull> {
     let mut state = STATE.lock().unwrap();
     state.init(player);
 
+    let val = cx.string("works");
+    let global = cx.global();
+    global.set(&mut cx, "test_audio_rust", val);
+
     Ok(cx.null())
 }
 
@@ -253,9 +286,28 @@ fn add_pl (mut cx: FunctionContext) -> JsResult<JsNull> {
     Ok(cx.null())
 }
 
-fn skip (mut cx: FunctionContext) -> JsResult<JsNull> {
-    STATE.lock().unwrap().skip();
+fn abort_curr (mut cx: FunctionContext) -> JsResult<JsNull> {
+    STATE.lock().unwrap().abort_curr();
     Ok(cx.null())
+}
+
+fn prev (mut cx: FunctionContext) -> JsResult<JsNull> {
+    let mut state = STATE.lock().unwrap();
+    state.go_back();
+    state.abort_curr();
+    Ok(cx.null())
+}
+
+fn curr_playing (mut cx: FunctionContext) -> JsResult<JsValue> {
+    let p = STATE.lock().unwrap().curr_playing();
+
+    if let Some(path) = p {
+        let res = cx.string(path);
+        Ok(res.as_value(&mut cx))
+    } else {
+        let res = cx.null();
+        Ok(res.as_value(&mut cx))
+    }
 }
 
 fn spawn_file_reader (mut prod: Producer<f32>, sample_rate: u32, shared_waker: Arc<AtomicWaker>) {
@@ -265,7 +317,7 @@ fn spawn_file_reader (mut prod: Producer<f32>, sample_rate: u32, shared_waker: A
         let prod = Arc::new(Mutex::new(prod));
         loop {
             let mut guard = STATE.lock().unwrap();
-            if let Some(file) = guard.next_song() {
+            if let Some(file) = guard.advance() {
                 if let Some(mut f) = AudioFile::open(file.as_str()) {
                     let reader = BufferedReader::new(prod.clone(), shared_waker.clone());
                     let future = resample_read(&mut f, reader, sample_rate);
@@ -279,6 +331,7 @@ fn spawn_file_reader (mut prod: Producer<f32>, sample_rate: u32, shared_waker: A
                     block_on(future);
 
                 } else {
+                    guard.rm_curr();
                     println!("an error occurred while reading from {}", file.as_str());
                 }
             } else { 

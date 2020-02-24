@@ -11,6 +11,7 @@ window.addEventListener('load', () => {
 
     document.getElementById('play').onclick = play_action;
     document.getElementById('next').onclick = next_action;
+    document.getElementById('prev').onclick = prev_action;
 
     console.log(document.getElementById("cover-image").src)
     window.audio.pause();
@@ -30,4 +31,8 @@ function pause_action () {
 
 function next_action () {
     window.audio.skip();
+}
+
+function prev_action () {
+    window.audio.prev();
 }

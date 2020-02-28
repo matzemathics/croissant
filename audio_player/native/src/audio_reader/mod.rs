@@ -97,12 +97,20 @@ impl AudioProducer for AudioFile {
         let struppi = MimeDetective::new().ok()?;
         let mime_type = struppi.detect_filepath(file_name).ok()?;
             
+        let mut guessed_type = mime_type.subtype().as_str();
+
         if mime_type.type_() != mime::AUDIO {
-            println!("not an audio file: {} ({})", file_name, mime_type);
-            return None;
+
+            if file_name.ends_with(".mp3") { guessed_type = "mpeg" }
+            else if file_name.ends_with(".wav") { guessed_type = "wav" }
+            else if file_name.ends_with(".opus") { guessed_type = "ogg" }
+            else {
+                println!("not an audio file: {} ({})", file_name, mime_type); 
+                return None; 
+            }
         }
 
-        match mime_type.subtype().as_str() {
+        match guessed_type {
             "mpeg" => {
                 let file_reader = Mp3Reader::open(file_name)?;
                 Some(AudioFile::Mp3File(file_reader))

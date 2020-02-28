@@ -35,12 +35,16 @@ use std::{
     thread::sleep,
     time::Duration,
     fmt::Debug,
-    sync::{Arc, Mutex},
+    sync::{
+        mpsc::{channel, Sender},
+        Arc, 
+        Mutex
+    },
     boxed::Box,
     marker::PhantomData,
     collections::VecDeque,
     io::{BufReader},
-    fs::File    
+    fs::File
 };
 
 use futures::{
@@ -87,6 +91,10 @@ impl<'a> PlayerState<'a> {
         if let Some(handle) = &self.abort_handle {
             handle.abort();
         }
+
+        if let Some(player) = &self.player {
+            player.clear_buffer();
+        }
     }
 
     fn advance(&mut self) -> Option<String> {
@@ -107,7 +115,7 @@ impl<'a> PlayerState<'a> {
     }
 
     fn curr_playing(&self) -> Option<String> {
-        self.played_list.first().map(|x| (*x).clone())
+        self.played_list.last().map(|x| (*x).clone())
     }
 
     fn add_to_queue(&mut self, title: String) {
@@ -128,6 +136,7 @@ struct CpalPlayer<'a> {
     stream_id: cpal::StreamId,
     sample_rate: u32,
     playing: bool,
+    channel: Sender<()>,
     phantom: PhantomData<&'a ()>
 }
 
@@ -150,6 +159,8 @@ impl CpalPlayer<'_> {
             data_type: cpal::SampleFormat::F32
         };
 
+        let (send, recv) = channel();
+
         let stream_id = event_loop.build_output_stream(&device, &format).ok()?;
 
         let event_loop_copy = event_loop.clone();
@@ -170,6 +181,11 @@ impl CpalPlayer<'_> {
                         for elem in buffer.iter_mut() {
                             *elem = cons.pop().unwrap_or(0.0);
                         }
+
+                        if recv.try_recv().is_ok() {
+                            cons.pop_each(|_| true, None);
+                        }
+
                         shared_waker.wake();
                     },
                     _ => (),
@@ -182,8 +198,13 @@ impl CpalPlayer<'_> {
             stream_id: stream_id,
             sample_rate: sample_rate,
             playing: true,
+            channel: send,
             phantom: PhantomData
         })
+    }
+
+    fn clear_buffer(&self) {
+        self.channel.send(());
     }
 
     fn play(&mut self) -> Result<(), String> {
@@ -332,7 +353,6 @@ fn spawn_file_reader (mut prod: Producer<f32>, sample_rate: u32, shared_waker: A
 
                 } else {
                     guard.rm_curr();
-                    println!("an error occurred while reading from {}", file.as_str());
                 }
             } else { 
                 std::mem::drop(guard);

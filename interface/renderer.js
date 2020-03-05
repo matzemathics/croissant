@@ -29,7 +29,7 @@ function Cover () {
             this.song_path = path;
             const p = path.replace(/\/[^\/]*$/, "");
 
-            const cover_files = ["/folder.jpg", "/cover.jpg"].map(x => p+x);
+            const cover_files = ["/folder.jpg", "/cover.jpg", "/folder.png", "/cover.png"].map(x => p+x);
 
             for (const file of cover_files) {
                 if (fs.existsSync(file)) {
@@ -58,7 +58,7 @@ function vibrate () {
 
 function showImage(){
     cover.update(window.audio.curr_playing());
-    setTimeout(showImage, 2000);
+    setTimeout(showImage, 1000);
 }
 
 function play_action () {

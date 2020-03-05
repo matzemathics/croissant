@@ -24,7 +24,7 @@
   },
   "homepage": "https://github.com/matzemathics/croissant#readme",
   "dependencies": {
-    "vibrant": "0.0.1"
+    "node-vibrant": "^3.1.5"
   },
   "devDependencies": {
     "electron": "^7.1.10",

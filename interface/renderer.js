@@ -15,7 +15,51 @@ window.addEventListener('load', () => {
 
     console.log(document.getElementById("cover-image").src)
     window.audio.pause();
+    showImage();
 })
+
+var cover = new Cover();
+
+function Cover () {
+    this.song_path = null;
+    this.cover_path = null;
+
+    this.update = function (path) {
+        if (this.song_path !== path) {
+            this.song_path = path;
+            const p = path.replace(/\/[^\/]*$/, "");
+
+            const cover_files = ["/folder.jpg", "/cover.jpg"].map(x => p+x);
+
+            for (const file of cover_files) {
+                if (fs.existsSync(file)) {
+                    console.log("file exists: " + file);
+                    document.getElementById("cover-image").src = file;
+
+                    vibrate();
+                    return;
+                }
+            }
+
+            console.log("no cover");
+
+            //
+        }
+    }
+}
+
+function vibrate () {
+    var vibrant = new Vibrant(document.getElementById("cover-image"));
+    vibrant.getPalette((err, palette) => {
+        document.getElementsByTagName("body")[0].style.backgroundColor = palette.LightVibrant.hex;
+        console.log(palette);
+    })
+}
+
+function showImage(){
+    cover.update(window.audio.curr_playing());
+    setTimeout(showImage, 2000);
+}
 
 function play_action () {
     window.audio.play();

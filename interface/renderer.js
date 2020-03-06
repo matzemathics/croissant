@@ -13,7 +13,11 @@ window.addEventListener('load', () => {
     document.getElementById('next').onclick = next_action;
     document.getElementById('prev').onclick = prev_action;
 
-    console.log(document.getElementById("cover-image").src)
+    document.getElementById('desc_btn').onclick = () => {
+        const text = document.getElementById('desc_text');
+        text.hidden = !text.hidden;
+        document.getElementById('desc_btn').innerText = text.hidden ? "info" : "close";
+    }
     window.audio.pause();
     showImage();
 })

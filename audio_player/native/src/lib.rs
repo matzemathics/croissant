@@ -175,17 +175,17 @@ impl CpalPlayer<'_> {
                     }
                 };
     
+                if recv.try_recv().is_ok() {
+                    cons.pop_each(|_| true, None);
+                }
+
                 match stream_data {
                     StreamData::Output { buffer: UnknownTypeOutputBuffer::F32(mut buffer) } => {
                         let len = buffer.len();
                         for elem in buffer.iter_mut() {
                             *elem = cons.pop().unwrap_or(0.0);
                         }
-
-                        if recv.try_recv().is_ok() {
-                            cons.pop_each(|_| true, None);
-                        }
-
+                        
                         shared_waker.wake();
                     },
                     _ => (),

@@ -60,3 +60,32 @@ body > div.button {
 	justify-content: space-around;
 	width: 500px;
 }
+
+#desc_btn {
+	border-radius: .5rem;
+	background-color: #d5fdef;
+	font-size: large;
+	font-family: Verdana, Geneva, sans-serif;
+}
+
+#desc_text {
+	/*height: 110px;*/
+	width: 600px;
+	background-color: #1efa68;
+    border-left-style: solid;
+    border-top-style: solid;
+	border-top-width: 1px;
+	border-top-color: #1efa68;
+	border-left-color: #00802b;
+	border-left-width: 10px;
+    padding-bottom: 1px;
+    padding-left: 7px;
+	border-radius: 8px;
+}
+
+#description {
+	position: fixed;
+    bottom: 0px;
+	margin-bottom: 1em;
+	margin-left: 1em;
+}

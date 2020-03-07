@@ -3,9 +3,14 @@ extern crate opusfile_sys;
 
 use enum_primitive::*;
 
-use std::path::Path;
-use std::result::Result;
-use std::ffi::CString;
+use std::{
+    path::Path,
+    result::Result,
+    convert::TryInto,
+    ffi::{CString},
+    slice::from_raw_parts,
+    str::from_utf8_unchecked
+};
 
 
 enum_from_primitive! {
@@ -60,9 +65,9 @@ enum_from_primitive! {
 }
 
 
-pub struct Opusfile (*mut opusfile_sys::OggOpusFile);
-impl Opusfile {
-    pub fn open<P: AsRef<Path>> (filename: P) -> Result<Opusfile, Error> {
+pub struct Opusfile<'a> (&'a mut opusfile_sys::OggOpusFile);
+impl Opusfile<'_> {
+    pub fn open<'a, P: AsRef<Path>> (filename: P) -> Result<Opusfile<'a>, Error> {
         let path = CString::new(filename.as_ref().to_str().unwrap()).unwrap().into_raw();
         let mut error :i32 = 0;
         let handle = unsafe { opusfile_sys::op_open_file(path, &mut error) };
@@ -71,7 +76,7 @@ impl Opusfile {
             return Err(Error::from_i32(error).unwrap());
         }
 
-        Ok(Opusfile(handle))
+        Ok(Opusfile(unsafe { handle.as_mut().unwrap() }))
     }
 
     pub fn read_stereo (&mut self, target: &mut [f32]) -> Result<usize, Error> {
@@ -83,12 +88,75 @@ impl Opusfile {
             Ok(res as usize)
         }
     }
+
+    pub fn tags<'a> (this: &Opusfile<'a>) -> Option<Tags<'a>> {
+        unsafe {
+            opusfile_sys::op_tags(this.0, 0)
+                .as_ref().map(|t| Tags::new(t)) 
+        }
+    }
 }
 
-unsafe impl Send for Opusfile {}
+unsafe impl Send for Opusfile<'_> {}
 
-impl Drop for Opusfile {
+impl Drop for Opusfile<'_> {
     fn drop(&mut self) {
         unsafe { opusfile_sys::op_free(self.0); }
+    }
+}
+
+pub struct Tags<'a> (Vec<(&'a str, &'a str)>);
+
+impl<'a> Tags<'a> {
+    fn new (tags: &'a opusfile_sys::OpusTags) -> Tags<'a> 
+    {
+        let num_tags = tags.comments.try_into().unwrap();
+        let raw_tags = unsafe { 
+            let lengths = from_raw_parts(tags.comment_lengths, num_tags);
+            let comments = from_raw_parts(tags.user_comments, num_tags);
+            comments.iter().zip(lengths)
+        };
+        
+        let mut res = Vec::new();
+        for (tag, length) in raw_tags {
+            let s = unsafe {
+                from_utf8_unchecked(from_raw_parts(*tag as *const u8, *length as usize))
+            };
+            let fields : Vec<&str> = s.split('=').collect();
+            assert_eq!(fields.len(), 2);
+            let label = fields[0];
+            let content = fields[1];
+            println!("{} ... {}", label, content);
+            res.push((label, content));
+        }
+        Tags(res)
+    }
+
+    pub fn get_tag(&self, tag: &str) -> Option<&'a str >
+    {
+        for &(t, v) in self.0.as_slice() {
+            if t == tag {
+                return Some(v)
+            }
+        }
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn op_test_file_succeeds () {
+        use std::path::Path;
+
+        let out_dir = std::env::current_dir().expect("could not get out dir");
+        let out_dir = Path::new(&out_dir);
+        let static_test_path = out_dir.join("test.opus");
+        println!("Testing opus file: {:?}", static_test_path);
+        
+        let f = crate::Opusfile::open(static_test_path).unwrap();
+        let t = crate::Opusfile::tags(&f).unwrap();
+
+        assert_eq!(t.get_tag("title"), Some("Illustrated Man"));
     }
 }

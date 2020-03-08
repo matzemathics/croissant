@@ -54,8 +54,7 @@ struct PlayerState<'a> {
     player: Option<CpalPlayer<'a>>,
     play_queue: VecDeque<String>,
     played_list: Vec<String>,
-    abort_handle: Option<AbortHandle>,
-    curr_tags: Option<Tags>
+    curr: Option<(String, Tags, AbortHandle)>
 }
 
 impl<'a> PlayerState<'a> {
@@ -64,13 +63,8 @@ impl<'a> PlayerState<'a> {
             player: None, 
             played_list: Vec::new(), 
             play_queue: VecDeque::new(), 
-            abort_handle: None,
-            curr_tags: None
+            curr: None
         }
-    }
-
-    fn initialized(&self) -> bool {
-        self.player.is_none()
     }
 
     fn init(&mut self, player: CpalPlayer<'a>) {
@@ -78,7 +72,7 @@ impl<'a> PlayerState<'a> {
     }
 
     fn abort_curr(&mut self) {
-        if let Some(handle) = &self.abort_handle {
+        if let Some((_, _, handle)) = &self.curr {
             handle.abort();
         }
 
@@ -87,32 +81,51 @@ impl<'a> PlayerState<'a> {
         }
     }
 
-    fn advance(&mut self) -> Option<String> {
-        let res = self.play_queue.pop_front();
-        if let Some(p) = res.clone() { self.played_list.push(p); }
-        res
+    fn next(&self) -> Option<String> { self.play_queue.front().cloned() }
+
+    fn advance(&mut self, info: Option<(String, Tags, AbortHandle)>) {
+        let _ = self.play_queue.pop_front();
+
+        if let Some((l, _, _)) = &self.curr {
+            self.played_list.push(l.clone()) 
+        }
+        self.curr = info;
     }
 
     fn go_back(&mut self) {
-        let curr = self.played_list.pop();
-        let res = self.played_list.pop();
-        if let Some(p) = res.clone() { 
+        let curr = self.curr.clone().map(|(c,_,_)| c);
+        self.curr = None;
+
+        let last = self.played_list.pop();
+
+        if let Some(p) = last.clone() 
+        { 
             self.play_queue.push_front(curr.unwrap());
             self.play_queue.push_front(p); 
-        } else if let Some(p) = curr {
+        } 
+        else if let Some(p) = curr 
+        {
             self.play_queue.push_front(p);
         }
     }
 
     fn curr_playing(&self) -> Option<String> {
-        self.played_list.last().map(|x| (*x).clone())
+        if let Some((t, _, _)) = self.curr.as_ref() {
+            Some(t.clone())
+        } else { None }
+    }
+
+    fn curr_tags(&self) -> Option<Tags> {
+        if let Some((_, t, _)) = self.curr.as_ref() {
+            Some(t.clone())
+        } else { None }
     }
 
     fn add_to_queue(&mut self, title: String) {
         self.play_queue.push_back(title);
     }
 
-    fn play_next(&mut self, title: String) {
+    fn add_next(&mut self, title: String) {
         self.play_queue.push_front(title);
     }
 
@@ -124,7 +137,6 @@ impl<'a> PlayerState<'a> {
 struct CpalPlayer<'a> {
     event_loop: Arc<cpal::EventLoop>,
     stream_id: cpal::StreamId,
-    sample_rate: u32,
     playing: bool,
     channel: Sender<()>,
     phantom: PhantomData<&'a ()>
@@ -171,7 +183,6 @@ impl CpalPlayer<'_> {
 
                 match stream_data {
                     StreamData::Output { buffer: UnknownTypeOutputBuffer::F32(mut buffer) } => {
-                        let len = buffer.len();
                         for elem in buffer.iter_mut() {
                             *elem = cons.pop().unwrap_or(0.0);
                         }
@@ -186,7 +197,6 @@ impl CpalPlayer<'_> {
         Some(CpalPlayer {
             event_loop: event_loop,
             stream_id: stream_id,
-            sample_rate: sample_rate,
             playing: true,
             channel: send,
             phantom: PhantomData
@@ -194,7 +204,7 @@ impl CpalPlayer<'_> {
     }
 
     fn clear_buffer(&self) {
-        self.channel.send(());
+        self.channel.send(()).unwrap();
     }
 
     fn play(&mut self) -> Result<(), String> {
@@ -233,14 +243,14 @@ fn init(mut cx: FunctionContext) -> JsResult<JsNull> {
     let sample_rate = 48000;
     let buffer_size = sample_rate as usize * 4;
     let auddiobuf = RingBuffer::<f32>::new(buffer_size);
-    let (mut prod, mut cons) = auddiobuf.split();
+    let (prod, cons) = auddiobuf.split();
 
     let shared_waker = Arc::new(AtomicWaker::new());
 
     spawn_file_reader(prod, sample_rate, shared_waker.clone());
 
     let mut player = CpalPlayer::new(sample_rate, cons, shared_waker).expect("cannot open player");
-    player.pause();
+    player.pause().unwrap();
 
     let mut state = STATE.lock().unwrap();
     state.init(player);
@@ -253,7 +263,7 @@ fn play(mut cx: FunctionContext) -> JsResult<JsNull> {
     match &mut state.player {
         None => init(cx),
         Some(player) => {
-            player.play();
+            player.play().unwrap();
             Ok(cx.null())
         }
     }
@@ -264,7 +274,7 @@ fn pause(mut cx: FunctionContext) -> JsResult<JsNull> {
     match &mut state.player {
         None => init(cx),
         Some(player) => {
-            player.pause();
+            player.pause().unwrap();
             Ok(cx.null())
         }
     }
@@ -320,7 +330,7 @@ fn curr_playing (mut cx: FunctionContext) -> JsResult<JsValue> {
 fn curr_tag (mut cx: FunctionContext) -> JsResult<JsValue> {
     let state = STATE.lock().unwrap();
 
-    if let Some(t) = state.curr_tags.as_ref() {
+    if let Some(t) = state.curr_tags() {
         let res = cx.empty_object();
 
         let mut str_or_null = |x| {
@@ -336,9 +346,9 @@ fn curr_tag (mut cx: FunctionContext) -> JsResult<JsValue> {
         let artist = str_or_null(t.artist());
         let album =  str_or_null(t.album());
         let title =  str_or_null(t.title());
-        res.set(&mut cx, "artist", artist);
-        res.set(&mut cx, "album", album);
-        res.set(&mut cx, "title", title);
+        res.set(&mut cx, "artist", artist).unwrap();
+        res.set(&mut cx, "album", album).unwrap();
+        res.set(&mut cx, "title", title).unwrap();
         return Ok(res.as_value(&mut cx));
     }
 
@@ -346,28 +356,29 @@ fn curr_tag (mut cx: FunctionContext) -> JsResult<JsValue> {
     Ok(res.as_value(&mut cx))
 }
 
-fn spawn_file_reader (mut prod: Producer<f32>, sample_rate: u32, shared_waker: Arc<AtomicWaker>) {
+fn spawn_file_reader (prod: Producer<f32>, sample_rate: u32, shared_waker: Arc<AtomicWaker>) {
 
     thread::spawn(move || {
         let prod = Arc::new(Mutex::new(prod));
         loop {
             let mut guard = STATE.lock().unwrap();
-            if let Some(file) = guard.advance() 
+            if let Some(file) = guard.next() 
             {
                 if let Some(mut f) = AudioFile::open(file.as_str()) 
-                {
-                    guard.curr_tags = Some(f.tags());
+                {                    
+                    let tags = f.tags();
 
                     let reader = BufferedReader::new(prod.clone(), shared_waker.clone());
                     let future = resample_read(&mut f, reader, sample_rate);
 
                     let (abort_handle, abort_reg) = AbortHandle::new_pair();
                     let future = Abortable::new(future, abort_reg);
-                    guard.abort_handle = Some(abort_handle);
-
+                    
+                    guard.advance(Some((file.clone(), tags, abort_handle)));
                     drop(guard);
+
                     println!("playing {}", file);
-                    block_on(future);
+                    let _ = block_on(future);
 
                 } 
                 else 

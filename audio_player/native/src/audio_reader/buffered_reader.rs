@@ -52,7 +52,7 @@ where
 
     fn poll_ready(
         self: Pin<&mut Self>,
-        cx: &mut Context
+        _cx: &mut Context
     ) -> Poll<Result<(), Self::Error>>
     { 
         Poll::Ready(Ok(())) 

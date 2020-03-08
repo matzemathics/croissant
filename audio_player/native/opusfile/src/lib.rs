@@ -126,7 +126,6 @@ impl<'a> Tags<'a> {
             assert_eq!(fields.len(), 2);
             let label = fields[0];
             let content = fields[1];
-            println!("{} ... {}", label, content);
             res.push((label, content));
         }
         Tags(res)

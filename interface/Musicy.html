@@ -7,32 +7,56 @@
 
 </head>
 <body>
- 	<div class="header">
+	
+	<div class="header">
 		<h1>Musik-Player</h1> 
 		<p>von Matthias (und Nils)</p>
 		<p>________________________________</p>
 	</div>
 
-	<div class="cover">
- 		<img id="cover-image" src="folder.jpg" alt="cover">
- 	</div>
+	<div class="content">
 
- 	<div class="button">
-		<img src="icons/backward.svg" id="prev" type="image/svg+xml"></img>
-		<img src="icons/play.svg" id="play" type="image/svg+xml"></img>
-		<img src="icons/forward.svg" id="next" type="image/svg+xml"></img>
+			<div class="left">
+	
+				<div id="cover">
+					<img id="cover-image" src="folder.jpg" alt="cover">
+				</div>
+			
+				<div id="tags">
+					<div>
+						<span id="artist">The Unkwown</span>
+						<span id="tag-seperator">-</span>
+						<br id="tag-br" hidden>
+						<span id="album">30 minutes of silence</span>
+					</div>
+					<span id="title">Silent night</span>
+				</div>
+			
+				<div class="button">
+					<img src="icons/backward.svg" id="prev" type="image/svg+xml"></img>
+					<img src="icons/play.svg" id="play" type="image/svg+xml"></img>
+					<img src="icons/forward.svg" id="next" type="image/svg+xml"></img>
+				</div>
+				
+			</div>
+		
+			<div class="right">
+				<h1>Playlist</h1>
+			</div>
 	</div>
+
 	<div id="description">
 		<button id="desc_btn">info</button>
-		<p id="desc_text" hidden>
+		<div id="desc_text" hidden>
 			Diese Anwendung ist ein Musik-Player, 
 			mit dem sie in der Lage sind, ihre Musik abzuspielen. 
 			Wenn sie eine Musikdatei mit diesem Programm abspielen, 
 			so können sie mit den obrigem Buttoninterface ihr Lied pausieren, 
 			sowie wieder abspielen oder durch ihre Playlist Vorwärts und 
 			Rückwärts durchklicken. 
-		</p>
+		</div>
 	</div>
+
 	<script src="../node_modules/node-vibrant/dist/vibrant.min.js"></script>
  	<script src="./renderer.js"></script>
 </body>

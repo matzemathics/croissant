@@ -6,8 +6,7 @@
 // process.
 
 window.addEventListener('load', () => {
-    window.audio.init(() => { });
-    console.log(document.getElementById('play'))
+    window.audio.init();
 
     document.getElementById('play').onclick = play_action;
     document.getElementById('next').onclick = next_action;
@@ -18,11 +17,13 @@ window.addEventListener('load', () => {
         text.hidden = !text.hidden;
         document.getElementById('desc_btn').innerText = text.hidden ? "info" : "close";
     }
+
     window.audio.pause();
-    showImage();
+    updateInfo();
 })
 
 var cover = new Cover();
+var tag = new Tag();
 
 function Cover () {
     this.song_path = null;
@@ -37,9 +38,7 @@ function Cover () {
 
             for (const file of cover_files) {
                 if (fs.existsSync(file)) {
-                    console.log("file exists: " + file);
                     document.getElementById("cover-image").src = file;
-
                     vibrate();
                     return;
                 }
@@ -47,7 +46,38 @@ function Cover () {
 
             console.log("no cover");
 
-            //
+            //TODO: add no cover.
+        }
+    }
+}
+
+function Tag () {
+    this.curr = null;
+
+    const tags = ['artist', 'album', 'title'];
+    this.update = function (t) {
+        if (!t) return;
+        if ( !this.curr || tags.find(x => this.curr[x] !== t[x])) {
+            this.curr = t;
+
+            tags.forEach(x => {
+                document.getElementById(x).textContent = t[x];
+            })
+            
+            const cover_div = document.getElementById('cover');
+            const tag_div = document.getElementById('tags');
+            const tag_sep = document.getElementById('tag-seperator');
+            const tag_br = document.getElementById('tag-br');
+
+            if (cover_div && tag_div && tag_sep && tag_br) {
+                if (cover_div.offsetWidth < tag_div.offsetWidth && tag_br.hidden) {
+                    tag_sep.hidden = true;
+                    tag_br.hidden = false;
+                } else if (cover_div.offsetWidth > tag_div.offsetWidth && tag_sep.hidden) {
+                    tag_sep.hidden = false;
+                    tag_br.hidden = true;
+                }
+            }
         }
     }
 }
@@ -56,13 +86,16 @@ function vibrate () {
     var vibrant = new Vibrant(document.getElementById("cover-image"));
     vibrant.getPalette((err, palette) => {
         document.getElementsByTagName("body")[0].style.backgroundColor = palette.LightVibrant.hex;
-        console.log(palette);
     })
 }
 
-function showImage(){
+function updateInfo(){
     cover.update(window.audio.curr_playing());
-    setTimeout(showImage, 1000);
+    const tags = window.audio.curr_tag();
+
+    tag.update(tags);
+
+    setTimeout(updateInfo, 1000);
 }
 
 function play_action () {

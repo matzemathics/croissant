@@ -2,13 +2,21 @@ body
 {
 	font-family: Verdana, Geneva, sans-serif;
 	background-color: thistle;
-
 }
 
-.header 
-{
-	margin-left:1em;
+div.content {
+	display: flex;
 }
+
+div.content > * {
+	margin: auto 1em;
+}
+
+div.right {
+	margin-top: 0;
+	margin-left: 1.5em;
+}
+
 /* Element | file:///K:/Final%20Shit/Musicy.html */
 
 .header > h1:nth-child(1) {
@@ -31,35 +39,49 @@ body
 
 /* Element | file:///K:/Final%20Shit/Musicy.html */
 
-body > div.button img {
+div.left > div.button img {
   height: 75px;
 }
-body > div.button img:hover {
+div.left > div.button img:hover {
 	opacity: 0.5;
 }
 
 
-.cover {
+#cover {
 
 	/*border: 1px solid black;*/
 	height: 500px;
 	width:  500px;
-    margin-bottom: 30px;
-    margin-left: 16px;
+    margin-bottom: 1em;
     
 }
-.cover > img {
+#cover > img {
 	height: 500px;
 	width:  500px;
 }
 
-body > div.button {
+div.left > div.button {
 	display: flex;
-	margin-left: 16px;
-	/* justify-items: stretch; */
 	justify-content: space-around;
 	width: 500px;
+	margin-top: 1em;
 }
+
+div.left > div#tags {
+	margin: .5em;
+	text-align: center;
+	font-size: large;
+}
+
+div#tags span#artist {
+	font-style: italic;
+}
+
+div#tags span#title {
+	font-size: x-large;
+	font-weight: bold;
+}
+
 
 #desc_btn {
 	border-radius: .5rem;
@@ -70,22 +92,20 @@ body > div.button {
 
 #desc_text {
 	/*height: 110px;*/
-	width: 600px;
 	background-color: #1efa68;
+
     border-left-style: solid;
-    border-top-style: solid;
-	border-top-width: 1px;
-	border-top-color: #1efa68;
 	border-left-color: #00802b;
 	border-left-width: 10px;
-    padding-bottom: 1px;
-    padding-left: 7px;
 	border-radius: 8px;
+
+	padding-left: 7px;
+	padding-top: 1em;
+	padding-bottom: 1em;
 }
 
 #description {
 	position: fixed;
-    bottom: 0px;
+	bottom: 0px;
 	margin-bottom: 1em;
-	margin-left: 1em;
 }

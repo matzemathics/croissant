@@ -3,27 +3,19 @@ extern crate hound;
 extern crate minimp3;
 extern crate opusfile;
 extern crate claxon;
+extern crate id3;
 
 use mime_detective::MimeDetective;
 
-use samplerate::{ConverterType, Samplerate, convert};
+use samplerate::{ConverterType, Samplerate};
 
 use std::{
-    thread::sleep,
-    iter::{Iterator, FromIterator},
-    result::Result,
-    time::Duration,
+    iter::Iterator,
     fs::File,
-    pin::Pin,
-    task::{Context, Poll},
     future::Future,
-    sync::{Arc, Mutex}
 };
 
-use futures::{
-    sink::{Sink, SinkExt, Send},
-    task::{Waker}
-};
+use futures::sink::SinkExt;
 
 use async_trait::async_trait;
 
@@ -69,7 +61,7 @@ pub fn resample_read <'a, T: ReaderTarget<f32> + 'a, P: AudioProducer> (
     target: BufferedReader<f32, T>, 
     sample_rate: u32) -> impl Future + 'a
 {
-    let mut resampler = Resampler {
+    let resampler = Resampler {
         orig_rate: prod.native_samplerate(),
         dest_rate: sample_rate,
         target: target,
@@ -84,15 +76,16 @@ pub fn resample_read <'a, T: ReaderTarget<f32> + 'a, P: AudioProducer> (
     prod.read(resampler)
 }
 
-pub enum AudioFile {
+pub enum AudioFile<'a> 
+{
     WavFile(WavReader),
     Mp3File(Mp3Reader),
-    OpusFile(OpusReader),
+    OpusFile(OpusReader<'a>),
     FlacFile(FlacReader)
 }
 
 #[async_trait]
-impl AudioProducer for AudioFile {
+impl AudioProducer for AudioFile<'_> {
     fn open(file_name: &str) -> Option<Self> {
         let struppi = MimeDetective::new().ok()?;
         let mime_type = struppi.detect_filepath(file_name).ok()?;
@@ -138,7 +131,7 @@ impl AudioProducer for AudioFile {
             AudioFile::FlacFile(f) => f.native_samplerate()
         }
     }
-    async fn read <T: ReaderTarget<f32>> (&mut self, mut target: Resampler<T>) {
+    async fn read <T: ReaderTarget<f32>> (&mut self, target: Resampler<T>) {
         match self {
             AudioFile::Mp3File(f) => f.read(target).await,
             AudioFile::WavFile(f) => f.read(target).await,
@@ -153,6 +146,17 @@ impl AudioProducer for AudioFile {
             AudioFile::WavFile(f) =>  f.legnth(),
             AudioFile::OpusFile(f) => f.legnth(),
             AudioFile::FlacFile(f) => f.legnth()
+        }
+    }
+}
+
+impl Tagged for AudioFile<'_> {
+    fn tags(&self) -> Tags {
+        match self {
+            AudioFile::Mp3File(f) =>  (f as &dyn Tagged).tags(),
+            AudioFile::WavFile(f) =>  (f as &dyn Tagged).tags(),
+            AudioFile::OpusFile(f) => (f as &dyn Tagged).tags(),
+            AudioFile::FlacFile(f) => (f as &dyn Tagged).tags()
         }
     }
 }
@@ -188,18 +192,39 @@ impl AudioProducer for WavReader {
     }
 }
 
+impl Tagged for WavReader {
+    fn tags(&self) -> Tags {
+        //TODO: figure out wave
+        Tags::empty()
+    }
+}
+
 pub struct Mp3Reader {
     decoder: minimp3::Decoder<std::fs::File>,
-    sample_rate: u32
+    sample_rate: u32,
+    tags: Tags
 }
 
 #[async_trait]
 impl AudioProducer for Mp3Reader {
     fn open(file_name: &str) -> Option<Self> {
+        let tag = id3::Tag::read_from_path(file_name).ok()?;
+        let tags = Tags {
+            artist: tag.artist().unwrap_or("").to_owned(),
+            album: tag.album().unwrap_or("").to_owned(),
+            title: tag.title().unwrap_or("").to_owned()
+        };
+        drop(tag);
+
         let f = File::open(file_name).ok()?;
         let mut dec = minimp3::Decoder::new(f);
         let r = dec.next_frame().ok()?.sample_rate;
-        Some(Mp3Reader { decoder: dec, sample_rate: r as u32 })
+
+        Some(Mp3Reader { 
+            decoder: dec, 
+            sample_rate: r as u32,
+            tags: tags
+        })
     }
     fn native_samplerate(&self) -> u32 {
         self.sample_rate
@@ -240,10 +265,16 @@ impl AudioProducer for Mp3Reader {
     }
 }
 
-pub type OpusReader = opusfile::Opusfile;
+impl Tagged for Mp3Reader {
+    fn tags(&self) -> Tags {
+        self.tags.clone()
+    }
+}
+
+pub type OpusReader<'a> = opusfile::Opusfile<'a>;
 
 #[async_trait]
-impl AudioProducer for OpusReader {
+impl AudioProducer for OpusReader<'_> {
     fn open(file_name: &str) -> Option<Self> {
         opusfile::Opusfile::open(file_name).ok()
     }
@@ -266,6 +297,19 @@ impl AudioProducer for OpusReader {
                     target.resample(&samples).await;
                 }
             }
+        }
+    }
+}
+
+impl Tagged for OpusReader<'_> {
+    fn tags(&self) -> Tags {
+        match opusfile::Opusfile::tags(self) {
+            Some(tags) => Tags {
+                artist: tags.get_tag("artist").join(", ").to_owned(),
+                album: tags.get_tag("album").join(" ").to_owned(),
+                title: tags.get_tag("title").join(" ").to_owned()
+            },
+            None => Tags::empty()
         }
     }
 }
@@ -293,4 +337,43 @@ impl AudioProducer for FlacReader {
             target.resample(& buffer.iter().map(|x| *x as f32 / 32768.0).collect::<Vec<_>>()).await;
         }
     }
+}
+
+impl Tagged for FlacReader {
+    fn tags(&self) -> Tags {
+        let artists : Vec<&str> = self.get_tag("artist").collect();
+        let album : Vec<&str> = self.get_tag("album").collect();
+        let title : Vec<&str> = self.get_tag("title").collect();
+
+        Tags {
+            artist: artists.join(", ").to_owned(),
+            album: album.join(" ").to_owned(),
+            title: title.join(" ").to_owned()
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Tags {
+    artist: String,
+    album: String,
+    title: String
+}
+
+impl Tags {
+    pub fn empty() -> Tags {
+        Tags {
+            artist: String::from(""),
+            album: String::from(""),
+            title: String::from("")
+        }
+    }
+
+    pub fn artist(&self) -> String { self.artist.clone() }
+    pub fn album(&self) -> String { self.album.clone() }
+    pub fn title(&self) -> String { self.title.clone() }
+}
+
+pub trait Tagged {
+    fn tags (&self) -> Tags;
 }

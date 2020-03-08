@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate neon;
 
 use neon::prelude::*;
@@ -12,6 +11,7 @@ register_module!(mut cx, {
       .and(cx.export_function("skip", abort_curr))
       .and(cx.export_function("curr_playing", curr_playing))
       .and(cx.export_function("prev", prev))
+      .and(cx.export_function("curr_tag", curr_tag))
 });
 
 extern crate cpal;
@@ -25,33 +25,21 @@ extern crate futures_util;
 mod audio_reader;
 
 use audio_reader::buffered_reader::{BufferedReader, ReaderTarget};
-use audio_reader::{AudioFile, AudioProducer, resample_read};
+use audio_reader::{AudioFile, AudioProducer, resample_read, Tags, Tagged};
 
 use cpal::traits::{HostTrait, EventLoopTrait};
 use cpal::{StreamData, UnknownTypeOutputBuffer, Format};
 
 use std::{
-    thread,
-    thread::sleep,
-    time::Duration,
-    fmt::Debug,
-    sync::{
-        mpsc::{channel, Sender},
-        Arc, 
-        Mutex
-    },
-    boxed::Box,
-    marker::PhantomData,
-    collections::VecDeque,
-    io::{BufReader},
-    fs::File
+    thread, thread::sleep, time::Duration, fmt::Debug,
+    sync::{ mpsc::{channel, Sender}, Arc, Mutex },
+    marker::PhantomData, collections::VecDeque
 };
 
 use futures::{
-    prelude::*,
-    future::{Abortable, AbortHandle},
     executor::block_on,
-    task::AtomicWaker
+    task::AtomicWaker,
+    future::{Abortable, AbortHandle}
 };
 
 use ringbuf::{ RingBuffer, Producer };
@@ -66,7 +54,8 @@ struct PlayerState<'a> {
     player: Option<CpalPlayer<'a>>,
     play_queue: VecDeque<String>,
     played_list: Vec<String>,
-    abort_handle: Option<AbortHandle>
+    abort_handle: Option<AbortHandle>,
+    curr_tags: Option<Tags>
 }
 
 impl<'a> PlayerState<'a> {
@@ -75,7 +64,8 @@ impl<'a> PlayerState<'a> {
             player: None, 
             played_list: Vec::new(), 
             play_queue: VecDeque::new(), 
-            abort_handle: None
+            abort_handle: None,
+            curr_tags: None
         }
     }
 
@@ -255,10 +245,6 @@ fn init(mut cx: FunctionContext) -> JsResult<JsNull> {
     let mut state = STATE.lock().unwrap();
     state.init(player);
 
-    let val = cx.string("works");
-    let global = cx.global();
-    global.set(&mut cx, "test_audio_rust", val);
-
     Ok(cx.null())
 }
 
@@ -331,15 +317,47 @@ fn curr_playing (mut cx: FunctionContext) -> JsResult<JsValue> {
     }
 }
 
+fn curr_tag (mut cx: FunctionContext) -> JsResult<JsValue> {
+    let state = STATE.lock().unwrap();
+
+    if let Some(t) = state.curr_tags.as_ref() {
+        let res = cx.empty_object();
+
+        let mut str_or_null = |x| {
+            if x == "" {
+                let res = cx.null();
+                res.as_value(&mut cx)
+            } else {
+                let res = cx.string(x);
+                res.as_value(&mut cx)
+            }
+        };
+
+        let artist = str_or_null(t.artist());
+        let album =  str_or_null(t.album());
+        let title =  str_or_null(t.title());
+        res.set(&mut cx, "artist", artist);
+        res.set(&mut cx, "album", album);
+        res.set(&mut cx, "title", title);
+        return Ok(res.as_value(&mut cx));
+    }
+
+    let res = cx.null();
+    Ok(res.as_value(&mut cx))
+}
+
 fn spawn_file_reader (mut prod: Producer<f32>, sample_rate: u32, shared_waker: Arc<AtomicWaker>) {
 
     thread::spawn(move || {
-        let curr_dir = std::env::current_dir().unwrap();
         let prod = Arc::new(Mutex::new(prod));
         loop {
             let mut guard = STATE.lock().unwrap();
-            if let Some(file) = guard.advance() {
-                if let Some(mut f) = AudioFile::open(file.as_str()) {
+            if let Some(file) = guard.advance() 
+            {
+                if let Some(mut f) = AudioFile::open(file.as_str()) 
+                {
+                    guard.curr_tags = Some(f.tags());
+
                     let reader = BufferedReader::new(prod.clone(), shared_waker.clone());
                     let future = resample_read(&mut f, reader, sample_rate);
 
@@ -351,10 +369,14 @@ fn spawn_file_reader (mut prod: Producer<f32>, sample_rate: u32, shared_waker: A
                     println!("playing {}", file);
                     block_on(future);
 
-                } else {
+                } 
+                else 
+                {
                     guard.rm_curr();
                 }
-            } else { 
+            }
+            else
+            {
                 std::mem::drop(guard);
                 sleep(Duration::from_millis(100));
             }

@@ -1,22 +1,13 @@
 
 use std::{
-    thread::sleep,
-    iter::{Iterator, FromIterator},
+    iter::Iterator,
     result::Result,
-    time::Duration,
-    fs::File,
     pin::Pin,
     task::{Context, Poll},
-    future::Future,
     sync::{Arc, Mutex}
 };
 
-use futures::{
-    sink::{Sink, SinkExt, Send},
-    task::{AtomicWaker}
-};
-
-use async_trait::async_trait;
+use futures::{ sink::Sink, task::AtomicWaker };
 
 pub trait ReaderTarget<T> : core::marker::Sync + core::marker::Send {
     fn read_iter <I: Iterator<Item = T>> (&mut self, iter: &mut I) -> usize;

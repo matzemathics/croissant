@@ -132,14 +132,15 @@ impl<'a> Tags<'a> {
         Tags(res)
     }
 
-    pub fn get_tag(&self, tag: &str) -> Option<&'a str >
+    pub fn get_tag(&self, tag: &str) -> Vec<&'a str>
     {
+        let mut res = Vec::new();
         for &(t, v) in self.0.as_slice() {
-            if t == tag {
-                return Some(v)
+            if t.to_uppercase() == tag.to_uppercase() {
+                res.push(v);
             }
         }
-        None
+        res
     }
 }
 
@@ -157,6 +158,6 @@ mod tests {
         let f = crate::Opusfile::open(static_test_path).unwrap();
         let t = crate::Opusfile::tags(&f).unwrap();
 
-        assert_eq!(t.get_tag("title"), Some("Illustrated Man"));
+        assert_eq!(t.get_tag("title"), vec!["Illustrated Man"]);
     }
 }

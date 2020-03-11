@@ -17,7 +17,7 @@ div.right {
 	margin-left: 1.5em;
 }
 
-div.right *:first-child {
+div.right > *:first-child {
 	margin-top: 0;
 }
 
@@ -112,4 +112,55 @@ div#tags span#title {
 	position: fixed;
 	bottom: 0px;
 	margin-bottom: 1em;
+}
+
+ol.playlist {
+	padding-left: 0;
+	list-style: inside decimal;
+	display: flex;
+	flex-direction: column;
+}
+
+ol.playlist > li {
+	padding: 1rem;
+	border: 1.2pt solid black;
+}
+
+ol.playlist > li:hover {
+	background: rgba(200, 200, 255, 0.5);
+}
+
+ol.playlist > li:not(:first-child) {
+	border-top: 0pt;
+}
+
+ol.playlist > li .pl-artist {
+	font-size: small;
+	font-style: italic;
+}
+
+ol.playlist > li .pl-artist::before {
+	content: "by ";
+}
+
+ol.playlist > li .pl-album::before {
+	content: "- ";
+	margin-left: 3pt;
+}
+
+ol.playlist > li .pl-album {
+	font-size: small;
+}
+
+ol.playlist > li .pl-title {
+	font-weight: bold;
+}
+
+* {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }

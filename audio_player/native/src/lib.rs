@@ -190,11 +190,16 @@ impl CpalPlayer<'_> {
         let (send, recv) = channel();
 
         let stream_id = event_loop.build_output_stream(&device, &format).ok()?;
+        event_loop.play_stream(stream_id.clone()).unwrap();
 
         let event_loop_copy = event_loop.clone();
         
         thread::spawn(move || {
             event_loop_copy.run(move |stream_id, stream_result| {
+                if cons.is_empty() {
+                    //avoid busy waiting
+                    sleep(Duration::from_millis(200));
+                }
                 let stream_data = match stream_result {
                     Ok(data) => data,
                     Err(err) => {
@@ -202,7 +207,7 @@ impl CpalPlayer<'_> {
                         return;
                     }
                 };
-    
+
                 if recv.try_recv().is_ok() {
                     cons.pop_each(|_| true, None);
                 }
@@ -212,7 +217,7 @@ impl CpalPlayer<'_> {
                         for elem in buffer.iter_mut() {
                             *elem = cons.pop().unwrap_or(0.0);
                         }
-                        
+
                         shared_waker.wake();
                     },
                     _ => (),

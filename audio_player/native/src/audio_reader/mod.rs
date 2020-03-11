@@ -46,6 +46,10 @@ impl<T: ReaderTarget<f32>> Resampler<T>
 
         self.target.send(converted)
     }
+
+    fn ready (&self) -> bool {
+        self.target.ready()
+    }
 }
 
 #[async_trait]
@@ -53,7 +57,7 @@ pub trait AudioProducer : Sized {
     fn open(file_name: &str) -> Option<Self>;
     fn native_samplerate (&self) -> u32;
     async fn read <T: ReaderTarget<f32>> (&mut self, mut target: Resampler<T>);
-    fn legnth (&self) -> u128;    
+    fn legnth (&self) -> u32;    
 }
 
 pub fn resample_read <'a, T: ReaderTarget<f32> + 'a, P: AudioProducer> (
@@ -140,7 +144,7 @@ impl AudioProducer for AudioFile<'_> {
         }
     }
 
-    fn legnth(&self) -> u128 {
+    fn legnth(&self) -> u32 {
         match self {
             AudioFile::Mp3File(f) =>  f.legnth(),
             AudioFile::WavFile(f) =>  f.legnth(),
@@ -173,7 +177,7 @@ impl AudioProducer for WavReader {
         self.spec().sample_rate
     }
 
-    fn legnth(&self) -> u128 {
+    fn legnth(&self) -> u32 {
         (self.len() / 2).into()
     }
 
@@ -205,6 +209,46 @@ pub struct Mp3Reader {
     tags: Tags
 }
 
+impl Mp3Reader {
+    // find the first frame containing audio
+    // to reduce gaps when gepless playback is
+    // demanded
+    fn first_frame (&mut self) -> Vec<f32> {
+        let mut decoded = Vec::new();
+        let mut frame = self.decoder.next_frame();
+    
+        while let Ok(f) = frame {
+            frame = self.decoder.next_frame();
+    
+            if let Ok(n) = frame.as_ref() {
+                if n.data.first() == Some(&0) { continue; }
+            }
+    
+            let mut curr_samples = f.data.iter().map(|x| *x as f32 / 32768.0);
+    
+            while let (Some(l), Some(r)) = (curr_samples.next(), curr_samples.next()) {
+                if l * l > 0.01 || r * r > 0.01 { break; }
+            }
+            
+            let mut begin : Vec<f32> = curr_samples.collect();
+            decoded.append(&mut begin);
+    
+            if let Ok(n) = frame {
+                let mut curr_samples : Vec<f32> 
+                    = n.data.iter()
+                        .map(|x| *x as f32 / 32768.0)
+                        .collect();
+                
+                decoded.append(&mut curr_samples);
+            }
+    
+            return decoded;
+        }
+
+        panic!("should not be reached");
+    }
+}
+
 #[async_trait]
 impl AudioProducer for Mp3Reader {
     fn open(file_name: &str) -> Option<Self> {
@@ -221,7 +265,7 @@ impl AudioProducer for Mp3Reader {
         let r = dec.next_frame().ok()?.sample_rate;
 
         Some(Mp3Reader { 
-            decoder: dec, 
+            decoder: dec,
             sample_rate: r as u32,
             tags: tags
         })
@@ -230,38 +274,32 @@ impl AudioProducer for Mp3Reader {
         self.sample_rate
     }
 
-    fn legnth(&self) -> u128 { unimplemented!() }
+    fn legnth(&self) -> u32 { unimplemented!() }
 
     async fn read <T: ReaderTarget<f32>> (&mut self, mut target: Resampler<T>) {
-        let mut frame = self.decoder.next_frame();
+        let first = self.first_frame();
+        target.resample(first.as_slice()).await;
 
-        while let Ok(f) = frame {
-            frame = self.decoder.next_frame();
-
-            if let Ok(n) = frame.as_ref() {
-                if n.data.first() == Some(&0) { continue; }
+        let mut frames : Vec<Vec<f32>> = Vec::new();
+    
+        loop {
+            //decode further
+            if let Ok(n) = self.decoder.next_frame() 
+            {
+                let curr_samples : Vec<f32> 
+                    = n.data.iter()
+                        .map(|x| *x as f32 / 32768.0)
+                        .collect();
+                
+                target.resample(&mut curr_samples.as_slice()).await;
             }
-
-            let mut curr_samples = f.data.iter().map(|x| *x as f32 / 32768.0);
-
-            while let (Some(l), Some(r)) = (curr_samples.next(), curr_samples.next()) {
-                if l * l > 0.01 || r * r > 0.01 { break; }
+            //nothing to decode
+            else 
+            {
+                break;
             }
-            
-            target.resample(& curr_samples.collect::<Vec<_>>()).await;
-
-            if let Ok(n) = frame {
-                let curr_samples = n.data.iter().map(|x| *x as f32 / 32768.0);
-                target.resample(& curr_samples.collect::<Vec<_>>()).await;
-            }
-
-            break;
         }
 
-        while let Ok(n) = self.decoder.next_frame() {
-            let curr_samples = n.data.iter().map(|x| *x as f32 / 32768.0);
-            target.resample(& curr_samples.collect::<Vec<_>>()).await;
-        }
     }
 }
 
@@ -281,7 +319,7 @@ impl AudioProducer for OpusReader<'_> {
 
     fn native_samplerate(&self) -> u32 { 48000 }
 
-    fn legnth(&self) -> u128 { unimplemented!() }
+    fn legnth(&self) -> u32 { unimplemented!() }
 
     async fn read <T: ReaderTarget<f32>> (&mut self, mut target: Resampler<T>) {
         loop {
@@ -326,7 +364,7 @@ impl AudioProducer for FlacReader {
         self.streaminfo().sample_rate
     }
 
-    fn legnth(&self) -> u128 { unimplemented!() }
+    fn legnth(&self) -> u32 { unimplemented!() }
 
     async fn read <T: ReaderTarget<f32>> (&mut self, mut target: Resampler<T>) {
         let mut blocks = self.blocks();
@@ -353,7 +391,7 @@ impl Tagged for FlacReader {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Tags {
     artist: String,
     album: String,

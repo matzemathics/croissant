@@ -12,6 +12,8 @@ register_module!(mut cx, {
       .and(cx.export_function("curr_playing", curr_playing))
       .and(cx.export_function("prev", prev))
       .and(cx.export_function("curr_tag", curr_tag))
+      .and(cx.export_function("playlist", playlist))
+      .and(cx.export_function("changed", changed))
 });
 
 extern crate cpal;
@@ -54,7 +56,8 @@ struct PlayerState<'a> {
     player: Option<CpalPlayer<'a>>,
     play_queue: VecDeque<String>,
     played_list: Vec<String>,
-    curr: Option<(String, Tags, AbortHandle)>
+    curr: Option<(String, Tags, AbortHandle)>,
+    changed: bool
 }
 
 impl<'a> PlayerState<'a> {
@@ -63,7 +66,8 @@ impl<'a> PlayerState<'a> {
             player: None, 
             played_list: Vec::new(), 
             play_queue: VecDeque::new(), 
-            curr: None
+            curr: None,
+            changed: false
         }
     }
 
@@ -81,7 +85,9 @@ impl<'a> PlayerState<'a> {
         }
     }
 
-    fn next(&self) -> Option<String> { self.play_queue.front().cloned() }
+    fn next(&self) -> Option<String> { 
+        self.play_queue.front().cloned() 
+    }
 
     fn advance(&mut self, info: Option<(String, Tags, AbortHandle)>) {
         let _ = self.play_queue.pop_front();
@@ -90,35 +96,55 @@ impl<'a> PlayerState<'a> {
             self.played_list.push(l.clone()) 
         }
         self.curr = info;
+        self.changed = true;
+    }
+
+    fn changed (&mut self) -> bool {
+        let c = self.changed;
+        self.changed = false;
+        c
     }
 
     fn go_back(&mut self) {
-        let curr = self.curr.clone().map(|(c,_,_)| c);
-        self.curr = None;
+        if let Some((curr, _, _)) = self.curr.clone() {
+            self.play_queue.push_front(curr);
 
-        let last = self.played_list.pop();
+            if let Some(last) = self.played_list.pop().clone() {
+                self.play_queue.push_front(last);
+            }
 
-        if let Some(p) = last.clone() 
-        { 
-            self.play_queue.push_front(curr.unwrap());
-            self.play_queue.push_front(p); 
-        } 
-        else if let Some(p) = curr 
-        {
-            self.play_queue.push_front(p);
+            self.abort_curr();
+
+            self.curr = None;
         }
     }
 
     fn curr_playing(&self) -> Option<String> {
-        if let Some((t, _, _)) = self.curr.as_ref() {
-            Some(t.clone())
-        } else { None }
+        self.curr.as_ref().map(|(t, _, _)| t.clone())
     }
 
     fn curr_tags(&self) -> Option<Tags> {
-        if let Some((_, t, _)) = self.curr.as_ref() {
-            Some(t.clone())
-        } else { None }
+        self.curr.as_ref().map(|(_, t, _)| t.clone())
+    }
+
+    fn tags(&self) -> Vec<Tags> {
+        let mut res = Vec::new();
+
+        for f in self.played_list.iter() {
+            if let Some(file) = AudioFile::open(f.as_str()) {
+                res.push(file.tags());
+            }
+        }
+        if let Some(tags) = self.curr_tags() {
+            res.push(tags);
+        }
+        for f in self.play_queue.iter() {
+            if let Some(file) = AudioFile::open(f.as_str()) {
+                res.push(file.tags());
+            }
+        }
+
+        res
     }
 
     fn add_to_queue(&mut self, title: String) {
@@ -311,7 +337,6 @@ fn abort_curr (mut cx: FunctionContext) -> JsResult<JsNull> {
 fn prev (mut cx: FunctionContext) -> JsResult<JsNull> {
     let mut state = STATE.lock().unwrap();
     state.go_back();
-    state.abort_curr();
     Ok(cx.null())
 }
 
@@ -327,33 +352,56 @@ fn curr_playing (mut cx: FunctionContext) -> JsResult<JsValue> {
     }
 }
 
+fn tag_to_js<'a, C: Context<'a>> (cx: &mut C, t: Tags) -> Handle<'a, JsObject> {
+    let res = cx.empty_object();
+
+    let mut str_or_null = |x| {
+        if x == "" {
+            let res = cx.null();
+            res.as_value(cx)
+        } else {
+            let res = cx.string(x);
+            res.as_value(cx)
+        }
+    };
+
+    let artist = str_or_null(t.artist());
+    let album =  str_or_null(t.album());
+    let title =  str_or_null(t.title());
+    res.set(cx, "artist", artist).unwrap();
+    res.set(cx, "album", album).unwrap();
+    res.set(cx, "title", title).unwrap();
+
+    res
+}
+
+fn playlist(mut cx: FunctionContext) -> JsResult<JsArray> {
+    let tags = STATE.lock().unwrap().tags();
+
+    let array = cx.empty_array();
+
+    for i in 0 .. tags.len() {
+        let tag = tag_to_js(&mut cx, tags[i].clone());
+        array.set(&mut cx, i as u32, tag).unwrap();
+    }
+
+    Ok(array)
+}
+
 fn curr_tag (mut cx: FunctionContext) -> JsResult<JsValue> {
     let state = STATE.lock().unwrap();
 
     if let Some(t) = state.curr_tags() {
-        let res = cx.empty_object();
-
-        let mut str_or_null = |x| {
-            if x == "" {
-                let res = cx.null();
-                res.as_value(&mut cx)
-            } else {
-                let res = cx.string(x);
-                res.as_value(&mut cx)
-            }
-        };
-
-        let artist = str_or_null(t.artist());
-        let album =  str_or_null(t.album());
-        let title =  str_or_null(t.title());
-        res.set(&mut cx, "artist", artist).unwrap();
-        res.set(&mut cx, "album", album).unwrap();
-        res.set(&mut cx, "title", title).unwrap();
+        let res = tag_to_js(&mut cx, t);
         return Ok(res.as_value(&mut cx));
     }
 
     let res = cx.null();
     Ok(res.as_value(&mut cx))
+}
+
+fn changed (mut cx: FunctionContext) -> JsResult<JsBoolean> {
+    Ok(cx.boolean(STATE.lock().unwrap().changed()))
 }
 
 fn spawn_file_reader (prod: Producer<f32>, sample_rate: u32, shared_waker: Arc<AtomicWaker>) {

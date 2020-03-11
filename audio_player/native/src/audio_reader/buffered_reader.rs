@@ -40,6 +40,10 @@ where
             waker: waker
         }
     }
+
+    pub fn ready (&self) -> bool {
+        ! self.target.lock().unwrap().is_full()
+    }
 }
 
 impl<Item, R> Sink<Vec<Item>> for BufferedReader<Item, R>

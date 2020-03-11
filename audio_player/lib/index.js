@@ -12,3 +12,6 @@ exports.import_m3u = addon.import_m3u;
 
 exports.curr_playing = addon.curr_playing;
 exports.curr_tag = addon.curr_tag;
+exports.playlist = addon.playlist;
+
+exports.changed = addon.changed;

@@ -8,13 +8,17 @@ div.content {
 	display: flex;
 }
 
-div.content > * {
+body > * {
 	margin: auto 1em;
 }
 
 div.right {
 	margin-top: 0;
 	margin-left: 1.5em;
+}
+
+div.right *:first-child {
+	margin-top: 0;
 }
 
 /* Element | file:///K:/Final%20Shit/Musicy.html */

@@ -89,13 +89,18 @@ function vibrate () {
     })
 }
 
+let info_timeout = null;
+
 function updateInfo(){
-    cover.update(window.audio.curr_playing());
-    const tags = window.audio.curr_tag();
 
-    tag.update(tags);
+    if (window.audio.changed()) {
+        cover.update(window.audio.curr_playing());
+        const tags = window.audio.curr_tag();
+    
+        tag.update(tags);
+    }
 
-    setTimeout(updateInfo, 1000);
+    info_timeout = setTimeout(updateInfo, 3000);
 }
 
 function play_action () {
@@ -112,8 +117,12 @@ function pause_action () {
 
 function next_action () {
     window.audio.skip();
+    clearTimeout(info_timeout);
+    info_timeout = setTimeout(updateInfo, 100);
 }
 
 function prev_action () {
     window.audio.prev();
+    clearTimeout();
+    info_timeout = setTimeout(updateInfo, 100);
 }

@@ -10,8 +10,12 @@ exports.prev = addon.prev;
 exports.add_to_queue = addon.add_to_queue;
 exports.import_m3u = addon.import_m3u;
 
-exports.curr_playing = addon.curr_playing;
-exports.curr_tag = addon.curr_tag;
+exports.curr_info = () => ({
+    tag: addon.curr_tag(),
+    path: addon.curr_playing(),
+    id: addon.curr_id()
+})
+exports.skip_to = addon.skip_to;
 exports.playlist = addon.playlist;
 
 exports.changed = addon.changed;

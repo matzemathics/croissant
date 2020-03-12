@@ -93,14 +93,45 @@ let info_timeout = null;
 
 function updateInfo(){
 
-    if (window.audio.changed()) {
-        cover.update(window.audio.curr_playing());
-        const tags = window.audio.curr_tag();
-    
-        tag.update(tags);
+    if (audio.changed()) {
+        const info = audio.curr_info();
+        cover.update(info.path);
+        tag.update(info.tag);
+        plSetId(info.id);
     }
 
     info_timeout = setTimeout(updateInfo, 3000);
+}
+
+function plSetId (id) {
+    document.getElementById("playlist").childNodes.forEach((x, i) => {
+        if (i == id) x.firstChild.style.fontWeight = "bold";
+        else x.firstChild.style.fontWeight = "normal";
+    })
+}
+
+function updatePlaylist() {
+    const playlist = audio.playlist();
+    
+    const node = document.getElementById("playlist");
+    const pl_node = node.cloneNode(false);
+
+    playlist.forEach((item, i) => {
+        const li = document.createElement("li");
+        ["title", "album", "artist"].forEach(x => {
+            const span = document.createElement("span");
+            span.className = "pl-" + x;
+            span.innerText = item[x];
+            li.appendChild(span);
+        });
+        li.onclick = () => {
+            audio.skip_to(i);
+            clearTimeout(info_timeout);
+            info_timeout = setTimeout(updateInfo, 100);
+        }
+        pl_node.appendChild(li);
+    });
+    node.parentNode.replaceChild(pl_node, node);
 }
 
 function play_action () {

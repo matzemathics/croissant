@@ -114,46 +114,43 @@ div#tags span#title {
 	margin-bottom: 1em;
 }
 
-ol.playlist {
+ol#playlist {
 	padding-left: 0;
 	list-style: inside decimal;
 	display: flex;
 	flex-direction: column;
 }
 
-ol.playlist > li {
+ol#playlist > li {
 	padding: 1rem;
 	border: 1.2pt solid black;
 }
 
-ol.playlist > li:hover {
+ol#playlist > li:hover {
 	background: rgba(200, 200, 255, 0.5);
 }
 
-ol.playlist > li:not(:first-child) {
+ol#playlist > li:not(:first-child) {
 	border-top: 0pt;
 }
 
-ol.playlist > li .pl-artist {
+ol#playlist > li .pl-artist {
 	font-size: small;
 	font-style: italic;
 }
 
-ol.playlist > li .pl-artist::before {
+ol#playlist > li .pl-artist::before {
 	content: "by ";
+	margin-left: 3pt;
 }
 
-ol.playlist > li .pl-album::before {
+ol#playlist > li .pl-album::before {
 	content: "- ";
 	margin-left: 3pt;
 }
 
-ol.playlist > li .pl-album {
+ol#playlist > li .pl-album {
 	font-size: small;
-}
-
-ol.playlist > li .pl-title {
-	font-weight: bold;
 }
 
 * {

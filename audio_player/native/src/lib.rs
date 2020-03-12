@@ -5,15 +5,17 @@ use neon::prelude::*;
 register_module!(mut cx, {
     cx.export_function("play", play)
       .and(cx.export_function("pause", pause))
+      .and(cx.export_function("skip", abort_curr))
+      .and(cx.export_function("prev", prev))
       .and(cx.export_function("init", init))
       .and(cx.export_function("add_to_queue", add_pl))
       .and(cx.export_function("import_m3u", import_m3u))
-      .and(cx.export_function("skip", abort_curr))
       .and(cx.export_function("curr_playing", curr_playing))
-      .and(cx.export_function("prev", prev))
       .and(cx.export_function("curr_tag", curr_tag))
+      .and(cx.export_function("curr_id", curr_id))
       .and(cx.export_function("playlist", playlist))
       .and(cx.export_function("changed", changed))
+      .and(cx.export_function("skip_to", skip_to))
 });
 
 extern crate cpal;
@@ -127,6 +129,10 @@ impl<'a> PlayerState<'a> {
         self.curr.as_ref().map(|(_, t, _)| t.clone())
     }
 
+    fn curr_id(&self) -> u32 {
+        self.played_list.len() as u32
+    }
+
     fn tags(&self) -> Vec<Tags> {
         let mut res = Vec::new();
 
@@ -157,6 +163,41 @@ impl<'a> PlayerState<'a> {
 
     fn rm_curr (&mut self) {
         self.played_list.pop();
+    }
+
+    fn skip_to(&mut self, id: u32) {
+        let mut curr = self.curr_id();
+
+        if curr == id { return; }
+
+        if curr > id {
+            if let Some((t, _, _)) = &self.curr {
+                self.play_queue.push_front(t.clone());
+                curr -= 1;
+            }
+            for _ in id .. curr+1 {
+                self.play_queue.push_front(self.played_list.pop().unwrap());
+            }
+        } 
+        else if id as usize <= self.played_list.len() + self.play_queue.len() + 1 {
+            if let Some((t, _, _)) = &self.curr {
+                self.played_list.push(t.clone());
+                curr += 1;
+            }
+            for _ in curr .. id {
+                self.played_list.push(self.play_queue.pop_front().unwrap());
+            }
+        }
+
+        if let Some((_, _, handle)) = &self.curr {
+            handle.abort();
+        }
+
+        if let Some(player) = &self.player {
+            player.clear_buffer();
+        }
+
+        self.curr = None;
     }
 }
 
@@ -345,6 +386,16 @@ fn prev (mut cx: FunctionContext) -> JsResult<JsNull> {
     Ok(cx.null())
 }
 
+fn skip_to (mut cx: FunctionContext) -> JsResult<JsNull> {
+    let mut state = STATE.lock().unwrap();
+
+    if let Ok(arg) = cx.argument::<JsNumber>(0) {
+        state.skip_to(arg.value() as u32);
+    }
+
+    Ok(cx.null())
+}
+
 fn curr_playing (mut cx: FunctionContext) -> JsResult<JsValue> {
     let p = STATE.lock().unwrap().curr_playing();
 
@@ -355,6 +406,12 @@ fn curr_playing (mut cx: FunctionContext) -> JsResult<JsValue> {
         let res = cx.null();
         Ok(res.as_value(&mut cx))
     }
+}
+
+fn curr_id (mut cx: FunctionContext) -> JsResult<JsNumber> {
+    let s = STATE.lock().unwrap();
+
+    Ok(cx.number(s.curr_id()))
 }
 
 fn tag_to_js<'a, C: Context<'a>> (cx: &mut C, t: Tags) -> Handle<'a, JsObject> {

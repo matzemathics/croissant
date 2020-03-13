@@ -1,12 +1,6 @@
-// This file is required by the index.html file and will
-// be executed in the renderer process for that window.
-// No Node.js APIs are available in this process because
-// `nodeIntegration` is turned off. Use `preload.js` to
-// selectively enable features needed in the rendering
-// process.
 
 window.addEventListener('load', () => {
-    window.audio.init();
+    audio.init();
 
     document.getElementById('play').onclick = play_action;
     document.getElementById('next').onclick = next_action;
@@ -18,7 +12,16 @@ window.addEventListener('load', () => {
         document.getElementById('desc_btn').innerText = text.hidden ? "info" : "close";
     }
 
-    window.audio.pause();
+    document.getElementById('add_next').onclick = () => { 
+        open_action(f => {
+            audio.playlist.add_next(f);
+            schedule_update();
+        }); 
+    }
+    document.getElementById('add_queue').onclick = () => { open_action(audio.playlist.add_to_queue); }
+    document.getElementById('add_m3u').onclick = () => { open_action(audio.playlist.import_m3u); }
+
+    audio.control.pause();
     updateInfo();
 })
 
@@ -45,8 +48,8 @@ function Cover () {
             }
 
             console.log("no cover");
-
-            //TODO: add no cover.
+            document.getElementById("cover-image").src="icons/Blank_CD_icon.png";
+            setColor([216,191,216]);
         }
     }
 }
@@ -83,24 +86,34 @@ function Tag () {
 }
 
 function vibrate () {
-    var vibrant = new Vibrant(document.getElementById("cover-image"));
-    vibrant.getPalette((err, palette) => {
-        document.getElementsByTagName("body")[0].style.backgroundColor = palette.LightVibrant.hex;
-    })
+    new Vibrant(document.getElementById("cover-image"))
+        .getPalette((_, palette) => setColor(palette.LightMuted.rgb))
+}
+
+function setColor (c) {
+    const rgb = ([r,g,b]) => `rgb(${r}, ${g}, ${b})`;
+    document.getElementsByTagName("body")[0].style.backgroundColor = rgb(c);
+    const sel = c.map(x => Math.sqrt(x * x * 0.7));
+    document.getElementById("dynstyle").innerText = 
+        `ol#playlist > li:hover { background: ${rgb(sel)}}`;
 }
 
 let info_timeout = null;
 
 function updateInfo(){
-
-    if (audio.changed()) {
-        const info = audio.curr_info();
+    if (audio.info.changed()) {
+        const info = audio.info.curr_info();
         cover.update(info.path);
         tag.update(info.tag);
         plSetId(info.id);
     }
 
     info_timeout = setTimeout(updateInfo, 3000);
+}
+
+function schedule_update () {
+    clearTimeout(info_timeout);
+    info_timeout = setTimeout(updateInfo, 100);
 }
 
 function plSetId (id) {
@@ -111,10 +124,12 @@ function plSetId (id) {
 }
 
 function updatePlaylist() {
-    const playlist = audio.playlist();
+    const playlist = audio.info.playlist();
     
     const node = document.getElementById("playlist");
     const pl_node = node.cloneNode(false);
+
+    const sel_id = audio.info.curr_info().id;
 
     playlist.forEach((item, i) => {
         const li = document.createElement("li");
@@ -125,35 +140,42 @@ function updatePlaylist() {
             li.appendChild(span);
         });
         li.onclick = () => {
-            audio.skip_to(i);
-            clearTimeout(info_timeout);
-            info_timeout = setTimeout(updateInfo, 100);
+            audio.playlist.skip_to(i);
+            schedule_update();
         }
+        if (i == sel_id) li.firstChild.style.fontWeight = "bold";
         pl_node.appendChild(li);
     });
     node.parentNode.replaceChild(pl_node, node);
 }
 
 function play_action () {
-    window.audio.play();
+    audio.control.play();
     document.getElementById('play').src = "icons/pause.svg";
     document.getElementById('play').onclick = pause_action;
 }
 
 function pause_action () {
-    window.audio.pause();
+    audio.control.pause();
     document.getElementById('play').src = "icons/play.svg";
     document.getElementById('play').onclick = play_action;
 }
 
 function next_action () {
-    window.audio.skip();
-    clearTimeout(info_timeout);
-    info_timeout = setTimeout(updateInfo, 100);
+    audio.control.skip();
+    schedule_update();
 }
 
 function prev_action () {
-    window.audio.prev();
-    clearTimeout();
-    info_timeout = setTimeout(updateInfo, 100);
+    audio.control.prev();
+    schedule_update();
+}
+
+function open_action (f) {
+    dialog.showOpenDialog().then(res => {
+        res.filePaths.forEach(p => {
+            f(p);
+            updatePlaylist();
+        })
+    });
 }

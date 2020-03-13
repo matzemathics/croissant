@@ -87,7 +87,7 @@ div#tags span#title {
 }
 
 
-#desc_btn {
+.btn {
 	border-radius: .5rem;
 	background-color: #d5fdef;
 	font-size: large;
@@ -127,7 +127,7 @@ ol#playlist > li {
 }
 
 ol#playlist > li:hover {
-	background: rgba(200, 200, 255, 0.5);
+	background: rgb(181, 160, 181);
 }
 
 ol#playlist > li:not(:first-child) {
@@ -160,4 +160,19 @@ ol#playlist > li .pl-album {
     -moz-user-select: none;
     -ms-user-select: none;
     user-select: none;
+}
+
+div.right > div.horizontal {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+div.right > div.horizontal > * {
+	margin: 0;
+	height: 100%;
+}
+
+.btn-pl-add {
+	height: 100%;
 }

@@ -9,6 +9,7 @@ register_module!(mut cx, {
       .and(cx.export_function("prev", prev))
       .and(cx.export_function("init", init))
       .and(cx.export_function("add_to_queue", add_pl))
+      .and(cx.export_function("add_next", add_next))
       .and(cx.export_function("import_m3u", import_m3u))
       .and(cx.export_function("curr_playing", curr_playing))
       .and(cx.export_function("curr_tag", curr_tag))
@@ -158,7 +159,12 @@ impl<'a> PlayerState<'a> {
     }
 
     fn add_next(&mut self, title: String) {
+        if let Some((p, _, _)) = &self.curr {
+            self.play_queue.push_front(p.clone());
+        }
         self.play_queue.push_front(title);
+        self.abort_curr();
+        self.curr = None;
     }
 
     fn rm_curr (&mut self) {
@@ -371,6 +377,13 @@ fn import_m3u (mut cx: FunctionContext) -> JsResult<JsNull> {
 fn add_pl (mut cx: FunctionContext) -> JsResult<JsNull> {
     if let Ok(arg0) = cx.argument::<JsString>(0) {
         STATE.lock().unwrap().add_to_queue(arg0.value());
+    }
+    Ok(cx.null())
+}
+
+fn add_next (mut cx: FunctionContext) -> JsResult<JsNull> {
+    if let Ok(arg0) = cx.argument::<JsString>(0) {
+        STATE.lock().unwrap().add_next(arg0.value());
     }
     Ok(cx.null())
 }

@@ -4,7 +4,7 @@
 	<link rel="stylesheet" type="text/css" href="styles/style.css">
 	<title>NIILSS IST auch mal dabei gewesen</title>
 	<link rel="icon" href="./croissant.png" type="image/png">
-
+	<style id="dynstyle"></style>
 </head>
 <body>
 	
@@ -19,7 +19,7 @@
 			<div class="left">
 	
 				<div id="cover">
-					<img id="cover-image" src="folder.jpg" alt="cover">
+					<img id="cover-image" src="icons/Blank_CD_icon.png" alt="cover">
 				</div>
 			
 				<div id="tags">
@@ -41,7 +41,14 @@
 			</div>
 		
 			<div class="right">
-				<h1>Playlist</h1>
+				<div class="horizontal">
+					<h1>Playlist</h1>
+					<div>
+						<button class="btn-pl-add btn" id="add_next">play</button>
+						<button class="btn-pl-add btn" id="add_queue">queue</button>
+						<button class="btn-pl-add btn" id="add_m3u">add m3u</button>
+					</div>
+				</div>
 				<ol id="playlist">
 					<li>
 						<span class="pl-title">Silent night</span>
@@ -53,7 +60,7 @@
 	</div>
 
 	<div id="description">
-		<button id="desc_btn">info</button>
+		<button id="desc_btn" class="btn">info</button>
 		<div id="desc_text" hidden>
 			Diese Anwendung ist ein Musik-Player, 
 			mit dem sie in der Lage sind, ihre Musik abzuspielen. 

@@ -149,6 +149,10 @@ ol#playlist > li .pl-album::before {
 	margin-left: 3pt;
 }
 
+ol#playlist > li > span {
+	white-space: nowrap;
+}
+
 ol#playlist > li .pl-album {
 	font-size: small;
 }

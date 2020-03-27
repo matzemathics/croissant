@@ -1,3 +1,14 @@
+
+//+-----------------------------------------------------------------+
+//| main.js - startet das Programm
+//|
+//|   (Diese Datei wurde aus dem Quelloffenem Beispielprojekt 
+//|     electron-quick-start übernommen.
+//|     [https://github.com/electron/electron-quick-start]
+//|     Diese ist gemeinfrei nach CC0)
+//|
+//+-----------------------------------------------------------------+
+
 // Modules to control application life and create native browser window
 const {app, BrowserWindow} = require('electron')
 const path = require('path')

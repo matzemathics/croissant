@@ -1,9 +1,20 @@
 
-extern crate hound;
-extern crate minimp3;
-extern crate opusfile;
-extern crate claxon;
-extern crate id3;
+//+-------------------------------------------------------------+
+//| mod.rs - enthält die Einbinding der unterschiedlichen       |
+//|          Audiodateiformate. Das Programm unterstützt die    |
+//|          Formate .opus, .mp3, .wav und .flacc.              |
+//|        - organisiert das Resampling. Die Audiodaten können  |
+//|          in unterschiedlichen Sanplingraten vorliegen, die  |
+//|          hier angeglichen werden.                           |
+//+-------------------------------------------------------------+
+
+extern crate hound;         // Wave-Dateien (.wav)
+extern crate minimp3;       // Mpeg-Dateien (.mp3)
+extern crate opusfile;      // Opus-Dateien (.opus)
+extern crate claxon;        // Flac-Dateien (.flac)
+extern crate id3;           // Zusatzinformationen für .mp3-Dateien
+
+extern crate mime_detective;    // erkennt Dateitypen
 
 use mime_detective::MimeDetective;
 
@@ -23,23 +34,39 @@ pub mod buffered_reader;
 
 use buffered_reader::{BufferedReader, ReaderTarget};
 
+//+------------------------------------------
+//| struct Resampler<T>
+//|     - empfängt samples vom Typ f32, wandelt
+//|       sie, sodass die Samplingrate der des
+//|       Audio-Geräts entspricht und sendet sie
+//|       an einen BufferedReader
+//|       (s. audio_reader/buffered_reader.rs)
+
 pub struct Resampler<T> {
+    // Samplingrate der erhaltenen samples
     orig_rate: u32,
+    // Samplingrate des Audio-Geräts
     dest_rate: u32,
+    // Empfänger der Daten
     target: BufferedReader<f32, T>,
+    // Converter aus der libsamplerate Library
     converter: samplerate::Samplerate
 }
 
+// markiert den Datentypen als Threadsicher
 unsafe impl<T> std::marker::Send for Resampler <T> {}
 
 impl<T: ReaderTarget<f32>> Resampler<T>
 {
+    // konvertiert die Daten und schreibt sie in den Buffer
     fn resample (&mut self, input: &[f32]) -> impl Future + '_
     {
         let converted = {
             if self.dest_rate == self.orig_rate {
+                // keine Konvertierung notwendig
                 Vec::from(input)
             } else {
+                // benutze converter für die Konvertierung
                 self.converter.process(input).expect("couldn't resample")
             }
         };
@@ -52,14 +79,35 @@ impl<T: ReaderTarget<f32>> Resampler<T>
     }
 }
 
+// Rust - traits
+// Traits sind die Rust-eigene Methode, um Vererbung
+// zu implementieren. Alle Objekte eines traits enthalten
+// die gleichen Funktionen, auf die in generischer Weise
+// (ohne genaue Angabe des Typs) zugegriffen werden kann.
+
+//+-------------------------------------------------
+//| trait AudioProducer
+//|     - vereinigt Funktionen, um mit 
+//|       Audiodateien zu interagieren
+//|     - alle Audiodateien definieren diese
+//|       Funktionen
+
 #[async_trait]
 pub trait AudioProducer : Sized {
+    // Öffnet eine Datei mit dem Dateinamen
     fn open(file_name: &str) -> Option<Self>;
+    // Gibt die Samplingrate der Datei an
     fn native_samplerate (&self) -> u32;
+    // Liest die Datei vollständig und asynchron in den Resampler ein
     async fn read <T: ReaderTarget<f32>> (&mut self, mut target: Resampler<T>);
+    // wird nicht verwendet, vorgesehen um Dateilänge zurückzugeben
     fn legnth (&self) -> u32;    
 }
 
+// Liest eine Audiodatei von Typ P in einen Buffer von Typ
+// BufferedReader<f32, T>, wobei P den trait AudioProducer
+// und T den Typ ReaderTarget<f32> implementieren muss.
+// Dabei wird die Samplingrate der Datei an die angegebene angepasst.
 pub fn resample_read <'a, T: ReaderTarget<f32> + 'a, P: AudioProducer> (
     prod: &'a mut P, 
     target: BufferedReader<f32, T>, 
@@ -80,6 +128,50 @@ pub fn resample_read <'a, T: ReaderTarget<f32> + 'a, P: AudioProducer> (
     prod.read(resampler)
 }
 
+//+---------------------------------------------------------------
+//| struct Tags
+//|     - diese Struktur enthält Metadaten über die Datei:
+//|         +- Künstler
+//|         +- Album
+//|         +- Titel
+
+#[derive(Debug, Clone, Default)]
+pub struct Tags {
+    artist: String,
+    album: String,
+    title: String
+}
+
+impl Tags {
+    // leeres Tag, falls keine Informationen angegeben
+    pub fn empty() -> Tags {
+        Tags {
+            artist: String::from(""),
+            album: String::from(""),
+            title: String::from("")
+        }
+    }
+
+    pub fn artist(&self) -> String { self.artist.clone() }
+    pub fn album(&self) -> String { self.album.clone() }
+    pub fn title(&self) -> String { self.title.clone() }
+}
+
+//+--------------------------------------------------------
+//| trait Tagged
+//|     - kennzeichnet Objekte, die Tags enthalten, wird
+//|       also von allen Audiodateien implementiert
+
+pub trait Tagged {
+    fn tags (&self) -> Tags;
+}
+
+//+-------------------------------------------------
+//| enum AudioFile<'a>
+//|     - vereinfacht den Zugriff auf Audiodateien,
+//|       indem automatisch der Dateityp erkannt und
+//|       die richtige Struktur erstellt wird.
+
 pub enum AudioFile<'a> 
 {
     WavFile(WavReader),
@@ -90,14 +182,17 @@ pub enum AudioFile<'a>
 
 #[async_trait]
 impl AudioProducer for AudioFile<'_> {
+    // open erkennt den Dateityp und erstellt nach Format das richtige Objekt
     fn open(file_name: &str) -> Option<Self> {
+        // versuche den Dateityp herauszufinden
         let struppi = MimeDetective::new().ok()?;
         let mime_type = struppi.detect_filepath(file_name).ok()?;
-            
+        
         let mut guessed_type = mime_type.subtype().as_str();
 
+        // falls die Magic Bibiliothek nicht erfolgreich war
         if mime_type.type_() != mime::AUDIO {
-
+            // versuche den Dateityp anhand der Dateiendung herauszufinden
             if file_name.ends_with(".mp3") { guessed_type = "mpeg" }
             else if file_name.ends_with(".wav") { guessed_type = "wav" }
             else if file_name.ends_with(".opus") { guessed_type = "ogg" }
@@ -127,6 +222,8 @@ impl AudioProducer for AudioFile<'_> {
             _ => { unimplemented!() },
         }
     }
+
+    // die anderen Funktionen werden einfach an das jeweilige Objekt weitergegeben
     fn native_samplerate (&self) -> u32 {
         match self {
             AudioFile::Mp3File(f) => f.native_samplerate(),
@@ -165,6 +262,7 @@ impl Tagged for AudioFile<'_> {
     }
 }
 
+// Typ für Wave-Dateien
 pub type WavReader = hound::WavReader<std::io::BufReader<std::fs::File>>;
 
 #[async_trait]
@@ -203,6 +301,7 @@ impl Tagged for WavReader {
     }
 }
 
+// Typ für Mp3-Dateien
 pub struct Mp3Reader {
     decoder: minimp3::Decoder<std::fs::File>,
     sample_rate: u32,
@@ -279,25 +378,15 @@ impl AudioProducer for Mp3Reader {
     async fn read <T: ReaderTarget<f32>> (&mut self, mut target: Resampler<T>) {
         let first = self.first_frame();
         target.resample(first.as_slice()).await;
-
-        let mut frames : Vec<Vec<f32>> = Vec::new();
     
-        loop {
-            //decode further
-            if let Ok(n) = self.decoder.next_frame() 
-            {
-                let curr_samples : Vec<f32> 
-                    = n.data.iter()
-                        .map(|x| *x as f32 / 32768.0)
-                        .collect();
-                
-                target.resample(&mut curr_samples.as_slice()).await;
-            }
-            //nothing to decode
-            else 
-            {
-                break;
-            }
+        while let Ok(n) = self.decoder.next_frame() 
+        {
+            let curr_samples : Vec<f32> 
+                = n.data.iter()
+                    .map(|x| *x as f32 / 32768.0)
+                    .collect();
+            
+            target.resample(&mut curr_samples.as_slice()).await;
         }
 
     }
@@ -309,6 +398,7 @@ impl Tagged for Mp3Reader {
     }
 }
 
+// Typ für Opus-Dateien
 pub type OpusReader<'a> = opusfile::Opusfile<'a>;
 
 #[async_trait]
@@ -352,6 +442,7 @@ impl Tagged for OpusReader<'_> {
     }
 }
 
+// Typ für Flac-Dateien
 type FlacReader = claxon::FlacReader<std::fs::File>;
 
 #[async_trait]
@@ -389,29 +480,4 @@ impl Tagged for FlacReader {
             title: title.join(" ").to_owned()
         }
     }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct Tags {
-    artist: String,
-    album: String,
-    title: String
-}
-
-impl Tags {
-    pub fn empty() -> Tags {
-        Tags {
-            artist: String::from(""),
-            album: String::from(""),
-            title: String::from("")
-        }
-    }
-
-    pub fn artist(&self) -> String { self.artist.clone() }
-    pub fn album(&self) -> String { self.album.clone() }
-    pub fn title(&self) -> String { self.title.clone() }
-}
-
-pub trait Tagged {
-    fn tags (&self) -> Tags;
 }

@@ -1,4 +1,14 @@
 
+//+---------------------------------------------------------------------+
+//| lib.rs - bietet eine Schnittstelle für die libopusfile Bibiliothek, |
+//|     die das Dekodieren von Opus-Dateien ermöglicht. Die rust-An-    |
+//|     bindung dieser Bibiliothek befindet sich im crate opusfile-sys. |
+//|     Diese Datei vereinfacht den Zugriff auf bestimmte Bibiliotheks- |
+//|     funktionen.                                                     |
+//| siehe auch https://github.com/xiph/opusfile                         |
+//+---------------------------------------------------------------------+
+
+// automatisch erzeugte rust-Anbindung durch rust-bindgen
 extern crate opusfile_sys;
 
 use enum_primitive::*;
@@ -12,6 +22,11 @@ use std::{
     str::from_utf8_unchecked
 };
 
+//+----------------------------------------------------------------------------------------
+//| enum Error 
+//|     - Rückgabecodes der libopusfile Funktionen
+//|     - Erklärungen aus der Dokumentation übernommen
+//|       (siehe https://www.opus-codec.org/docs/opusfile_api-0.7/group__error__codes.html)
 
 enum_from_primitive! {
     #[derive(Debug, Copy, Clone, PartialEq)]
@@ -20,7 +35,7 @@ enum_from_primitive! {
         // A request did not succeed.
         OpFalse = (-1),
         
-        //  
+        // End of File
         OpEof = (-2),
         
         // There was a hole in the page sequence numbers (e.g., a page was corrupt or missing). 
@@ -64,10 +79,16 @@ enum_from_primitive! {
     }
 }
 
+//+------------------------------------------------------------------------------
+//| struct Opusfile<'a>
+//|     - einfaches Öffnen und Dekodieren von Opus-Dateien
 
 pub struct Opusfile<'a> (&'a mut opusfile_sys::OggOpusFile);
 impl Opusfile<'_> {
-    pub fn open<'a, P: AsRef<Path>> (filename: P) -> Result<Opusfile<'a>, Error> {
+
+    // öffnet eine Datei
+    pub fn open<'a, P: AsRef<Path>> (filename: P) -> Result<Opusfile<'a>, Error> 
+    {
         let path = CString::new(filename.as_ref().to_str().unwrap()).unwrap().into_raw();
         let mut error :i32 = 0;
         let handle = unsafe { opusfile_sys::op_open_file(path, &mut error) };
@@ -79,8 +100,15 @@ impl Opusfile<'_> {
         Ok(Opusfile(unsafe { handle.as_mut().unwrap() }))
     }
 
+    // liest die Opus-Datei in einen Buffer (target) und 
+    // gibt bei erfolgreicher Dekodierung deren Länge zurück
     pub fn read_stereo (&mut self, target: &mut [f32]) -> Result<usize, Error> {
-        let res = unsafe { opusfile_sys::op_read_float_stereo(self.0, target.as_mut_ptr(), target.len() as i32) };
+        let res = unsafe { 
+            opusfile_sys::op_read_float_stereo(
+                self.0, 
+                target.as_mut_ptr(), 
+                target.len() as i32) 
+        };
 
         if res < 0 {
             Err(Error::from_i32(res).unwrap())
@@ -89,6 +117,7 @@ impl Opusfile<'_> {
         }
     }
 
+    // Liest alle Metadaten aus der Datei
     pub fn tags<'a> (this: &Opusfile<'a>) -> Option<Tags<'a>> {
         unsafe {
             opusfile_sys::op_tags(this.0, 0)
@@ -97,17 +126,27 @@ impl Opusfile<'_> {
     }
 }
 
+// markiert die Struktur Opusfile als Threadsicher
 unsafe impl Send for Opusfile<'_> {}
 
+// bei Freigabe (drop) der Struktur Opusfile
+// wird die Datei korrekt geschlossen
 impl Drop for Opusfile<'_> {
     fn drop(&mut self) {
         unsafe { opusfile_sys::op_free(self.0); }
     }
 }
 
+//+--------------------------------------------------------
+//| struct Tags
+//|     - im Falle von Opushandelt es sich um Metadaten im
+//|       Vorbis-Format. Die Information über Künstler,
+//|       Titel, usw. werden als Name-Wert-Paare gespeichert.
+
 pub struct Tags<'a> (Vec<(&'a str, &'a str)>);
 
 impl<'a> Tags<'a> {
+    // Dekodierung der Tags
     fn new (tags: &'a opusfile_sys::OpusTags) -> Tags<'a> 
     {
         let num_tags = tags.comments.try_into().unwrap();
@@ -131,6 +170,7 @@ impl<'a> Tags<'a> {
         Tags(res)
     }
 
+    // eine einzelne Information erfragen
     pub fn get_tag(&self, tag: &str) -> Vec<&'a str>
     {
         let mut res = Vec::new();

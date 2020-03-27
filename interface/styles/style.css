@@ -1,48 +1,100 @@
+
+/*
++------------------------------------------------------+
+| style.css - globales Stylesheet                      |
++------------------------------------------------------+
+*/
+
+
+
+/*
++-------------------------------------------------------
+ \ Stilvorgaben für das gesamte Fenster
+*/
+
+/* Schriftart und Standard-Hintergrundfarbe */
 body 
 {
 	font-family: Verdana, Geneva, sans-serif;
 	background-color: thistle;
 }
-
-div.content {
-	display: flex;
-}
-
+/* Abstand zum Rand des Fensters */
 body > * {
 	margin: auto 1em;
 }
 
-div.right {
-	margin-top: 0;
-	margin-left: 1.5em;
+/* kein Element der Seite soll selektierbar sein */
+* {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
-div.right > *:first-child {
-	margin-top: 0;
+
+
+/*
++-------------------------------------------------------
+ \ Stilvorgaben für die Überschrift
+*/
+
+/* Überschrift ohne Abstand unten */
+.header > h1 {
+	margin-bottom: 0px;
 }
-
-/* Element | file:///K:/Final%20Shit/Musicy.html */
-
-.header > h1:nth-child(1) {
-  margin-bottom: 0px;
-}
-
-/* Element | file:///K:/Final%20Shit/Musicy.html */
-
+  
+/* Abstände erste Unterüberschrift */
 .header > p:nth-child(2) {
-  margin-bottom: 0px;
-  margin-top: 2px;
+	margin-bottom: 0px;
+	margin-top: 2px;
 }
-
-/* Element | file:///K:/Final%20Shit/Musicy.html */
-
+  
+/* Abstände zweite Unterüberschrift */
 .header > p:nth-child(3) {
-  margin-top: 0px;
+	margin-top: 0px;
 }
 
 
-/* Element | file:///K:/Final%20Shit/Musicy.html */
 
+/*
++-------------------------------------------------------
+ \ Stilvorgaben für die Spalten
+  +-- Stilvorgaben links
+*/
+
+/* Unterteilung in zwei flexible Spalten */
+div.content {
+	display: flex;
+}
+
+/* Größe des Covers */
+#cover {
+	height: 500px;
+	width:  500px;
+  margin-bottom: 1em;
+}
+#cover > img {
+	height: 500px;
+	width:  500px;
+}
+
+/* Darstellung der Informationen über Album, Künstler, Titel */
+div.left > div#tags {
+	margin: .5em;
+	text-align: center;
+	font-size: large;
+}
+div#tags span#artist {
+	font-style: italic;
+}
+div#tags span#title {
+	font-size: x-large;
+	font-weight: bold;
+}
+
+/* Aussehen der Buttons (Play, Pause, Next, Prev) */
 div.left > div.button img {
   height: 75px;
 }
@@ -50,20 +102,7 @@ div.left > div.button img:hover {
 	opacity: 0.5;
 }
 
-
-#cover {
-
-	/*border: 1px solid black;*/
-	height: 500px;
-	width:  500px;
-    margin-bottom: 1em;
-    
-}
-#cover > img {
-	height: 500px;
-	width:  500px;
-}
-
+/* Anordnung der Buttons */
 div.left > div.button {
 	display: flex;
 	justify-content: space-around;
@@ -71,49 +110,50 @@ div.left > div.button {
 	margin-top: 1em;
 }
 
-div.left > div#tags {
-	margin: .5em;
-	text-align: center;
-	font-size: large;
+
+
+/*
++-------------------------------------------------------
+ \ Stilvorgaben für die Spalten
+  +-- Stilvorgaben rechts
+*/
+
+/* Rechte Spalte auf Höhe der Linken und mit Abstand */
+div.right {
+	margin-top: 0;
+	margin-left: 1.5em;
+}
+/* Erstes Element rechts bündig mit dem linken */
+div.right > *:first-child {
+	margin-top: 0;
 }
 
-div#tags span#artist {
-	font-style: italic;
+/* Horizontale Ausrichtung im Spaltenkopf */
+div.right > div.horizontal {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
 }
 
-div#tags span#title {
-	font-size: x-large;
-	font-weight: bold;
+/* Höhe im Spaltenkopf maximal */
+div.right > div.horizontal > * {
+	margin: 0;
+	height: 100%;
 }
 
-
-.btn {
-	border-radius: .5rem;
-	background-color: #d5fdef;
-	font-size: large;
-	font-family: Verdana, Geneva, sans-serif;
+/* Butttons zum Bearbeiten der Playlist */
+.btn-pl-add {
+	height: 100%;
 }
 
-#desc_text {
-	/*height: 110px;*/
-	background-color: #1efa68;
+/*
++-------------------------------------------------------
+ \ Stilvorgaben für die Spalten
+  +-- Stilvorgaben rechts
+     \--- Darstellung der Playlist
+*/
 
-    border-left-style: solid;
-	border-left-color: #00802b;
-	border-left-width: 10px;
-	border-radius: 8px;
-
-	padding-left: 7px;
-	padding-top: 1em;
-	padding-bottom: 1em;
-}
-
-#description {
-	position: fixed;
-	bottom: 0px;
-	margin-bottom: 1em;
-}
-
+/* Darstellung als flexible Spalte */
 ol#playlist {
 	padding-left: 0;
 	list-style: inside decimal;
@@ -121,62 +161,73 @@ ol#playlist {
 	flex-direction: column;
 }
 
+/* Darstellung jedes Elements */
 ol#playlist > li {
 	padding: 1rem;
 	border: 1.2pt solid black;
 }
 
+/* Auswahlfarbe der Elemente */
 ol#playlist > li:hover {
 	background: rgb(181, 160, 181);
 }
 
+/* Rahmen oben nur beim Ersten Element */
 ol#playlist > li:not(:first-child) {
 	border-top: 0pt;
 }
 
+/* Darstellung de Informationen über Album, Künstler, Titel */
+ol#playlist > li > span {
+	white-space: nowrap;
+}
 ol#playlist > li .pl-artist {
 	font-size: small;
 	font-style: italic;
 }
-
 ol#playlist > li .pl-artist::before {
 	content: "by ";
 	margin-left: 3pt;
 }
-
 ol#playlist > li .pl-album::before {
 	content: "- ";
 	margin-left: 3pt;
 }
-
-ol#playlist > li > span {
-	white-space: nowrap;
-}
-
 ol#playlist > li .pl-album {
 	font-size: small;
 }
 
-* {
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    -khtml-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
+
+
+/*
++-------------------------------------------------------
+ \ Stil für die Info-Box unten 
+*/
+
+/* Darstellung des Buttons (info bzw. close) */
+.btn {
+	border-radius: .5rem;
+	background-color: #d5fdef;
+	font-size: large;
+	font-family: Verdana, Geneva, sans-serif;
 }
 
-div.right > div.horizontal {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
+/* Feste Position, Abstände */
+#description {
+	position: fixed;
+	bottom: 0px;
+	margin-bottom: 1em;
 }
 
-div.right > div.horizontal > * {
-	margin: 0;
-	height: 100%;
-}
+/* Design der Info-Box */
+#desc_text {
+	background-color: #1efa68;
+  border-left-style: solid;
+	border-left-color: #00802b;
+	border-left-width: 10px;
+	border-radius: 8px;
 
-.btn-pl-add {
-	height: 100%;
+	padding-left: 7px;
+	padding-top: 1em;
+	padding-bottom: 1em;
 }

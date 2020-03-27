@@ -2,3 +2,4 @@ node_modules
 audio_player/native/target
 audio_player/native/artifacts.json
 audio_player/native/opusfile-sys/libopusfile
+interface/icons/*
